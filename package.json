@@ -1,0 +1,49 @@
+{
+	"name": "@krauters/logger",
+	"description": "TypeScript wrapper for Winston, optimized for structured Lambda logs and CloudWatch.",
+	"version": "0.0.0",
+	"main": "dist/src/index.js",
+	"type": "commonjs",
+	"scripts": {
+		"build": "tsc",
+		"dev": "ts-node ./src/index.ts",
+		"example-1": "ts-node ./examples/1.ts",
+		"fix": "npm run lint -- --fix",
+		"lint": "npx eslint src/**",
+		"prepare": "husky || true",
+		"prepublishOnly": "npm run build",
+		"start": "nodemon --inspect -e ts -w ./src -x npm run dev",
+		"test": "npm run lint && jest",
+		"upgrade:all": "npx npm-check-updates --upgrade && npm install"
+	},
+	"keywords": [
+		"typescript",
+		"logger",
+		"helper"
+	],
+	"author": "Colten Krauter <coltenkrauter>",
+	"license": "ISC",
+	"devDependencies": {
+		"@jest/globals": "^29.7.0",
+		"@krauters/eslint-config": "^1.4.0",
+		"@types/jest": "^29.5.14",
+		"husky": "^9.1.6",
+		"jest": "^29.7.0",
+		"nodemon": "^3.1.7",
+		"ts-jest": "^29.2.5",
+		"ts-node": "^10.9.2",
+		"typescript": "^5.6.3"
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"@aws-sdk/client-cloudwatch": "^3.679.0",
+		"@aws-sdk/client-s3": "^3.679.0",
+		"@krauters/environment": "^0.2.1",
+		"@krauters/utils": "^0.8.0",
+		"@types/aws-lambda": "^8.10.145",
+		"@types/uuid": "^10.0.0",
+		"winston": "^3.15.0"
+	}
+}
