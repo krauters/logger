@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { EnvironmentBuilder } from '@krauters/environment'
-import { Env, findPackageJson, isTruthy } from '@krauters/utils'
+import { Env, getPackageJson, isTruthy } from '@krauters/utils'
 import { hostname } from 'os'
 
 import { LogLevel } from './structures'
@@ -12,7 +12,7 @@ import { LogLevel } from './structures'
  * @returns The environment variable configuration.
  */
 export function getConfig(options?: Partial<ConfigOptions>) {
-	const packageJson = findPackageJson()
+	const packageJson = getPackageJson()
 	const codename = packageJson.name.split('/')[1]
 
 	return EnvironmentBuilder.create(
