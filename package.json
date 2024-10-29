@@ -1,7 +1,7 @@
 {
 	"name": "@krauters/logger",
 	"description": "TypeScript wrapper for Winston, optimized for structured Lambda logs and CloudWatch.",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"main": "dist/src/index.js",
 	"type": "commonjs",
 	"scripts": {
@@ -41,7 +41,7 @@
 		"@aws-sdk/client-cloudwatch": "^3.679.0",
 		"@aws-sdk/client-s3": "^3.679.0",
 		"@krauters/environment": "^0.2.1",
-		"@krauters/utils": "^0.8.0",
+		"@krauters/utils": "^0.9.0",
 		"@types/aws-lambda": "^8.10.145",
 		"@types/uuid": "^10.0.0",
 		"winston": "^3.15.0"
