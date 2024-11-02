@@ -14,13 +14,11 @@
  * with custom configuration options.
  */
 
-import { isTruthy } from '@krauters/utils'
-
 import type { LoggerOptions } from './structures'
 
 import { Logger } from './logger'
 
-const shouldInstantiateLogger = isTruthy(process.env.INIT_LOGGER ?? 'true')
+const shouldInstantiateLogger = process.env.INIT_LOGGER?.toLowerCase() ?? 'true' === 'true'
 
 let logger: Logger
 
