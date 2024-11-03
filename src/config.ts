@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { EnvironmentBuilder } from '@krauters/environment'
-import { Env, getPackageJson, isTruthy } from '@krauters/utils'
+import { Env } from '@krauters/structures'
 import { hostname } from 'os'
 
 import { LogLevel } from './structures'
@@ -12,9 +12,6 @@ import { LogLevel } from './structures'
  * @returns The environment variable configuration.
  */
 export function getConfig(options?: Partial<ConfigOptions>) {
-	const packageJson = getPackageJson()
-	const codename = packageJson.name.split('/')[1]
-
 	return EnvironmentBuilder.create(
 		'CODENAME',
 		'DRY_RUN',
@@ -27,17 +24,17 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 	)
 		.optionals('REQUEST_ID')
 		.transform((value) => value as LogLevel, 'LOG_LEVEL')
-		.transform((value) => isTruthy(value), 'DRY_RUN')
+		.transform((value) => value.toLowerCase() === 'true', 'DRY_RUN')
 		.defaults({
 			// Actual Defaults
-			CODENAME: codename,
+			CODENAME: 'NOTSET',
 			DRY_RUN: false,
 			ENV: Env.Unknown,
 			HOST: hostname(),
 			LOG_LEVEL: LogLevel.Info,
 			LOG_SECTION_SEPARATOR: ' | ',
 			TIMESTAMP_FORMAT: 'YYYY-MM-DD HH:mm:ssZ',
-			VERSION: packageJson.version,
+			VERSION: 'NOTSET',
 
 			// Parameter Supplied Defaults
 			...options,
