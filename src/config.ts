@@ -1,13 +1,10 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { EnvironmentBuilder } from '@krauters/environment'
 import { Env } from '@krauters/structures'
-import { configDotenv } from 'dotenv'
 import { hostname } from 'os'
 
 import { LogLevel } from './structures'
 import { isFalsy } from './utils'
-
-configDotenv()
 
 export type Config = ReturnType<typeof getConfig>
 
