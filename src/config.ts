@@ -1,9 +1,24 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { EnvironmentBuilder } from '@krauters/environment'
 import { Env } from '@krauters/structures'
+import { configDotenv } from 'dotenv'
 import { hostname } from 'os'
 
 import { LogLevel } from './structures'
+import { isFalsy } from './utils'
+
+configDotenv()
+
+export type Config = ReturnType<typeof getConfig>
+
+export interface ConfigOptions {
+	CODENAME: string
+	DRY_RUN: boolean
+	ENV: Env
+	HOST: string
+	LOG_LEVEL: LogLevel
+	VERSION: string
+}
 
 /**
  * Retrieves the application's environment configuration, allowing overrides via an options object.
@@ -18,13 +33,15 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 		'ENV',
 		'HOST',
 		'LOG_LEVEL',
-		'VERSION',
-		'TIMESTAMP_FORMAT',
 		'LOG_SECTION_SEPARATOR',
+		'SIMPLE_LOGS',
+		'TIMESTAMP_FORMAT',
+		'VERSION',
 	)
 		.optionals('REQUEST_ID')
 		.transform((value) => value as LogLevel, 'LOG_LEVEL')
-		.transform((value) => value.toLowerCase() === 'true', 'DRY_RUN')
+		.transform((value) => !isFalsy(value), 'SIMPLE_LOGS')
+		.transform((value) => !isFalsy(value), 'DRY_RUN')
 		.defaults({
 			// Actual Defaults
 			CODENAME: 'NOTSET',
@@ -33,6 +50,7 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 			HOST: hostname(),
 			LOG_LEVEL: LogLevel.Info,
 			LOG_SECTION_SEPARATOR: ' | ',
+			SIMPLE_LOGS: false,
 			TIMESTAMP_FORMAT: 'YYYY-MM-DD HH:mm:ssZ',
 			VERSION: 'NOTSET',
 
@@ -41,14 +59,3 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 		})
 		.environment()
 }
-
-export interface ConfigOptions {
-	CODENAME: string
-	DRY_RUN: boolean
-	ENV: Env
-	HOST: string
-	LOG_LEVEL: LogLevel
-	VERSION: string
-}
-
-export type Config = ReturnType<typeof getConfig>

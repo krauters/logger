@@ -79,6 +79,11 @@ The logger supports multiple configuration options to control logging format, le
 - `LOG_LEVEL`: Set the log level (`debug`, `info`, `warn`, `error`).
 - `LOG_FORMAT`: Choose between `json` for structured logging and `readable` for colorized output.
 - `REQUEST_ID`: Optionally set a request ID for tracing log entries.
+- `SIMPLE`: Optionally make log entries simpler (omit codename, version, use shorter requestId–useful for local development).
+
+### DotEnv
+
+This package supports [.env](https://www.npmjs.com/package/dotenv) configuration.
 
 ## Husky Integration
 
