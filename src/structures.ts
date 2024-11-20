@@ -17,6 +17,13 @@ export enum MetricUnit {
 	Count = 'Count',
 }
 
+export interface LoggerOptions {
+	configOptions?: Partial<ConfigOptions>
+	context?: LambdaContext
+	format?: Format
+	transports?: TransportStream[]
+}
+
 export interface LogOptions {
 	level: LogLevel
 	message: string
@@ -34,11 +41,4 @@ export interface PublishMetricOptions {
 	metricName: string
 	unit?: MetricUnit
 	value: number
-}
-
-export interface LoggerOptions {
-	configOptions?: Partial<ConfigOptions>
-	context?: LambdaContext
-	format?: Format
-	transports?: TransportStream[]
 }

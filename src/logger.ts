@@ -104,6 +104,15 @@ export class Logger {
 	}
 
 	public getLogObject(info: Record<string, unknown>, metadata: Metadata = {}): Record<string, unknown> {
+		if (this.config.SIMPLE_LOGS) {
+			return {
+				...info,
+				dryRun: this.config.DRY_RUN,
+				requestId: this.requestId,
+				...metadata,
+			}
+		}
+
 		return {
 			...info,
 			codename: this.config.CODENAME,
@@ -118,6 +127,7 @@ export class Logger {
 	public getRequestId(context?: LambdaContext): string {
 		if (this.config.REQUEST_ID) return this.config.REQUEST_ID
 		if (context?.awsRequestId) return context.awsRequestId
+		if (this.config.SIMPLE_LOGS) return uuidv4().split('-')[0]
 
 		return uuidv4()
 	}
@@ -128,7 +138,8 @@ export class Logger {
 		return format.combine(
 			format.timestamp(),
 			format.printf((info) => {
-				const logObject = this.getLogObject(info, info.metadata)
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const logObject = this.getLogObject(info, (info as any)?.metadata)
 
 				return Object.values(logObject).filter(Boolean).join(separator)
 			}),
