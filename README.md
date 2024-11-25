@@ -77,7 +77,7 @@ await logger.publishMetric({
 The logger supports multiple configuration options to control logging format, levels, and transports. Some commonly used environment variables include:
 
 - `LOG_LEVEL`: Set the log level (`debug`, `info`, `warn`, `error`).
-- `LOG_FORMAT`: Choose between `json` for structured logging and `readable` for colorized output.
+- `LOG_FORMAT`: Choose between `structured` for json logging and `friendly` for colorized console output. (default: friendly)
 - `REQUEST_ID`: Optionally set a request ID for tracing log entries.
 - `SIMPLE_LOGS`: Optionally make log entries simpler (omit codename, version, use shorter requestId–useful for local development).
 
