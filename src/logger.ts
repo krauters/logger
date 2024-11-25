@@ -85,7 +85,7 @@ export class Logger {
 		if (!formatters[formatType]) {
 			const validFormats = Object.keys(formatters).join(', ')
 			throw new Error(
-				`Invalid LOG_FORMAT '${process.env.LOG_FORMAT}'. Expected one of: ${validFormats}. ` +
+				`Invalid LOG_FORMAT '${process.env.LOG_FORMAT}'. Expected one of [${validFormats}]. ` +
 					`Defaulting to 'friendly' format.`,
 			)
 		}
@@ -133,15 +133,13 @@ export class Logger {
 	}
 
 	public getStructuredFormat(): Format {
-		const separator = process.env.LOG_SECTION_SEPARATOR ?? ' | '
-
 		return format.combine(
-			format.timestamp(),
+			format.timestamp({ format: this.config.TIMESTAMP_FORMAT || 'YYYY-MM-DD HH:mm:ss' }),
 			format.printf((info) => {
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				const logObject = this.getLogObject(info, (info as any)?.metadata)
 
-				return Object.values(logObject).filter(Boolean).join(separator)
+				return JSON.stringify(logObject, null, 2)
 			}),
 		)
 	}

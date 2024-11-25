@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/naming-convention */
 import type { CloudWatchClient } from '@aws-sdk/client-cloudwatch'
 
 import { PutMetricDataCommand } from '@aws-sdk/client-cloudwatch'
@@ -30,6 +31,7 @@ describe('Logger', () => {
 		const logStream = new stream.Writable({
 			write(chunk, _, callback) {
 				// Remove 'encoding' parameter
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
 				output.push(chunk.toString())
 				callback()
 			},
@@ -39,7 +41,7 @@ describe('Logger', () => {
 		logger.logger.clear()
 		logger.logger.add(
 			new winston.transports.Stream({
-				level: 'debug', // Explicitly set to capture debug logs
+				level: 'debug',
 				stream: logStream,
 			}),
 		)
