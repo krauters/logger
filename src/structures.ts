@@ -42,3 +42,5 @@ export interface PublishMetricOptions {
 	unit?: MetricUnit
 	value: number
 }
+
+export const empty = 'NOTSET'
