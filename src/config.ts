@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { EnvironmentBuilder } from '@krauters/environment'
-import { Env } from '@krauters/structures'
+import { Env, Stage } from '@krauters/structures'
 import { hostname } from 'os'
 
-import { LogLevel } from './structures'
+import { empty, LogLevel } from './structures'
 import { isFalsy } from './utils'
 
 export type Config = ReturnType<typeof getConfig>
@@ -14,6 +14,8 @@ export interface ConfigOptions {
 	ENV: Env
 	HOST: string
 	LOG_LEVEL: LogLevel
+	PACKAGE: string
+	STAGE: Stage
 	VERSION: string
 }
 
@@ -31,25 +33,31 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 		'HOST',
 		'LOG_LEVEL',
 		'LOG_SECTION_SEPARATOR',
+		'PACKAGE',
 		'SIMPLE_LOGS',
+		'STAGE',
 		'TIMESTAMP_FORMAT',
 		'VERSION',
 	)
 		.optionals('REQUEST_ID')
-		.transform((value) => value as LogLevel, 'LOG_LEVEL')
-		.transform((value) => !isFalsy(value), 'SIMPLE_LOGS')
 		.transform((value) => !isFalsy(value), 'DRY_RUN')
+		.transform((value) => !isFalsy(value), 'SIMPLE_LOGS')
+		.transform((value) => value as Env, 'ENV')
+		.transform((value) => value as Stage, 'STAGE')
+		.transform((value) => value as LogLevel, 'LOG_LEVEL')
 		.defaults({
 			// Actual Defaults
-			CODENAME: 'NOTSET',
+			CODENAME: empty,
 			DRY_RUN: false,
 			ENV: Env.Unknown,
 			HOST: hostname(),
 			LOG_LEVEL: LogLevel.Info,
 			LOG_SECTION_SEPARATOR: ' | ',
+			PACKAGE: empty,
 			SIMPLE_LOGS: false,
+			STAGE: Stage.Unknown,
 			TIMESTAMP_FORMAT: 'YYYY-MM-DD HH:mm:ssZ',
-			VERSION: 'NOTSET',
+			VERSION: empty,
 
 			// Parameter Supplied Defaults
 			...options,

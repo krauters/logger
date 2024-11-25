@@ -6,6 +6,7 @@ import type { Format } from 'logform'
 import type { Logger as WinstonLogger } from 'winston'
 
 import { CloudWatchClient, PutMetricDataCommand, StandardUnit } from '@aws-sdk/client-cloudwatch'
+import { Env } from '@krauters/structures'
 import chalk from 'chalk'
 import { v4 as uuidv4 } from 'uuid'
 import { createLogger, format, transports } from 'winston'
@@ -14,7 +15,7 @@ import type { Config } from './config'
 import type { LoggerOptions, LogOptions, PublishMetricOptions } from './structures'
 
 import { getConfig } from './config'
-import { LogLevel } from './structures'
+import { empty, LogLevel } from './structures'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Metadata = Record<string, any>
@@ -113,13 +114,30 @@ export class Logger {
 			}
 		}
 
-		return {
-			...info,
+		const base = {
 			codename: this.config.CODENAME,
 			dryRun: this.config.DRY_RUN,
+			env: this.config.ENV,
 			host: this.config.HOST,
+			package: this.config.PACKAGE,
 			requestId: this.requestId,
+			stage: this.config.STAGE,
 			version: this.config.VERSION,
+
+			// TODO - add support for additional fields to be set via environment variables.
+		}
+
+		const baseClean = Object.fromEntries(
+			Object.entries(base).filter(([, value]) => value !== empty && value !== Env.Unknown),
+		)
+
+		if (baseClean.env && baseClean.stage) {
+			console.warn('[Logger] Warning: Both "ENV" and "STAGE" are set. This might lead to unexpected behavior.')
+		}
+
+		return {
+			...info,
+			...baseClean,
 			...metadata,
 		}
 	}
