@@ -139,7 +139,7 @@ export class Logger {
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				const logObject = this.getLogObject(info, (info as any)?.metadata)
 
-				return JSON.stringify(logObject, null, 2)
+				return JSON.stringify(logObject)
 			}),
 		)
 	}
