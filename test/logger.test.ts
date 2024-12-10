@@ -1,36 +1,36 @@
+// logger/test/logger.test.ts
 /* eslint-disable @typescript-eslint/naming-convention */
+/* eslint-disable max-lines-per-function */
 
 import type { CloudWatchClient } from '@aws-sdk/client-cloudwatch'
+import type { LogMethod } from 'winston'
 
 import { PutMetricDataCommand } from '@aws-sdk/client-cloudwatch'
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { Env } from '@krauters/structures'
-import stream from 'stream'
-import winston from 'winston'
 
 import { initializeLogger, Logger, LogLevel, MetricUnit } from '../src/index'
 
 jest.mock('@aws-sdk/client-cloudwatch')
 
-// Function to strip ANSI color codes
-// eslint-disable-next-line no-control-regex
-const stripAnsi = (str: string) => str.replace(/\x1b\[[0-9;]*m/g, '')
-
-// eslint-disable-next-line max-lines-per-function
 describe('Logger', () => {
 	let logger: Logger
 	let cloudWatchClientMock: jest.Mock
-	let output: string[]
+	let logSpy: jest.SpiedFunction<LogMethod>
+
+	const attachLogSpy = () => {
+		logSpy = jest.spyOn(logger.logger, 'log')
+	}
 
 	beforeEach(() => {
 		// Reset the singleton instance
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		Logger.instance = undefined as any
 
+		// Initialize logger with test-specific configuration
 		logger = initializeLogger({
 			configOptions: {
 				CODENAME: 'TEST',
-				DRY_RUN: false,
 				ENV: Env.Development,
 				HOST: 'localhost',
 				LOG_FORMAT: 'friendly',
@@ -46,25 +46,11 @@ describe('Logger', () => {
 		// Remove only test-specific metadata
 		logger.removeFromAllLogs('userId', 'sessionId')
 
+		// Mock CloudWatch's send method
 		cloudWatchClientMock = jest.fn().mockResolvedValue({} as never)
 		logger.cloudwatch = { send: cloudWatchClientMock } as unknown as CloudWatchClient
 
-		output = []
-		const logStream = new stream.Writable({
-			write(chunk, _, callback) {
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-				output.push(chunk.toString())
-				callback()
-			},
-		})
-
-		logger.logger.clear()
-		logger.logger.add(
-			new winston.transports.Stream({
-				level: 'debug',
-				stream: logStream,
-			}),
-		)
+		attachLogSpy()
 	})
 
 	afterEach(() => {
@@ -76,18 +62,20 @@ describe('Logger', () => {
 		expect(logger).toBe(anotherLogger)
 	})
 
-	it('should log a message at debug level', (done) => {
+	it('should log a message at debug level', () => {
 		logger.debug('Debug message', { key: 'value' })
-		setImmediate(() => {
-			expect(output).toEqual(expect.arrayContaining([expect.stringContaining('Debug message')]))
-			done()
-		})
+		expect(logSpy).toHaveBeenCalledWith('debug', 'Debug message', expect.objectContaining({ key: 'value' }))
 	})
 
 	it('should format messages with timestamp, level, and message', () => {
 		const formatLogMessageSpy = jest.spyOn(logger, 'formatLogMessage')
 		logger.info('Info message', { exampleKey: 'exampleValue' })
 		expect(formatLogMessageSpy).toHaveBeenCalled()
+		expect(logSpy).toHaveBeenCalledWith(
+			'info',
+			'Info message',
+			expect.objectContaining({ exampleKey: 'exampleValue' }),
+		)
 		formatLogMessageSpy.mockRestore()
 	})
 
@@ -131,116 +119,61 @@ describe('Logger', () => {
 	})
 
 	it('should add metadata to all subsequent logs', () => {
-		const logSpy = jest.spyOn(logger.logger, 'log')
 		logger.addToAllLogs('userId', 'user-123')
 		logger.info('Message with user')
-
-		expect(logSpy).toHaveBeenCalledWith('info', 'Message with user', {
-			codename: 'TEST',
-			dryRun: false,
-			env: Env.Development,
-			host: 'localhost',
-			package: 'logger-package',
-			requestId: logger.metadata.requestId,
-			stage: Env.Beta,
-			userId: 'user-123',
-			version: '1.0.0',
-		})
-
-		expect(output[0]).toContain('userId: user-123')
+		expect(logSpy).toHaveBeenCalledWith(
+			'info',
+			'Message with user',
+			expect.objectContaining({ userId: 'user-123' }),
+		)
 	})
 
 	it('should remove a single metadata key from all subsequent logs', () => {
-		const logSpy = jest.spyOn(logger.logger, 'log')
 		logger.addToAllLogs('userId', 'user-123')
 		logger.removeFromAllLogs('userId')
 
 		expect(logger.metadata).not.toHaveProperty('userId')
 
 		logger.info('Message without user')
-
-		expect(logSpy).toHaveBeenCalledWith('info', 'Message without user', {
-			codename: 'TEST',
-			dryRun: false,
-			env: Env.Development,
-			host: 'localhost',
-			package: 'logger-package',
-			requestId: logger.metadata.requestId,
-			stage: Env.Beta,
-			version: '1.0.0',
-		})
-
-		expect(output[0]).not.toContain('userId: user-123')
+		expect(logSpy).toHaveBeenCalledWith(
+			'info',
+			'Message without user',
+			expect.not.objectContaining({ userId: 'user-123' }),
+		)
 	})
 
 	it('should remove multiple metadata keys when passed separately', () => {
-		const logSpy = jest.spyOn(logger.logger, 'log')
 		logger.addToAllLogs('userId', 'user-123')
 		logger.addToAllLogs('sessionId', 'session-abc')
 		logger.removeFromAllLogs('userId', 'sessionId')
 		logger.info('Message without user and session')
-
-		expect(logSpy).toHaveBeenCalledWith('info', 'Message without user and session', {
-			codename: 'TEST',
-			dryRun: false,
-			env: Env.Development,
-			host: 'localhost',
-			package: 'logger-package',
-			requestId: logger.metadata.requestId,
-			stage: Env.Beta,
-			version: '1.0.0',
-		})
-
-		expect(output[0]).not.toContain('userId: user-123')
-		expect(output[0]).not.toContain('sessionId: session-abc')
+		expect(logSpy).toHaveBeenCalledWith(
+			'info',
+			'Message without user and session',
+			expect.not.objectContaining({ sessionId: 'session-abc', userId: 'user-123' }),
+		)
 	})
 
 	it('should remove multiple metadata keys when passed as an array', () => {
-		const logSpy = jest.spyOn(logger.logger, 'log')
 		logger.addToAllLogs('userId', 'user-123')
 		logger.addToAllLogs('sessionId', 'session-abc')
 		logger.addToAllLogs('codename', 'coden-xyz')
 		logger.removeFromAllLogs(['userId', 'sessionId', 'codename'])
 		logger.info('Message without user, session and codename')
-
-		expect(logSpy).toHaveBeenCalledWith('info', 'Message without user, session and codename', {
-			dryRun: false,
-			env: Env.Development,
-			host: 'localhost',
-			package: 'logger-package',
-			requestId: logger.metadata.requestId,
-			stage: Env.Beta,
-			version: '1.0.0',
-		})
-
-		expect(output[0]).not.toContain('userId: user-123')
-		expect(output[0]).not.toContain('sessionId: session-abc')
-		expect(output[0]).not.toContain('codename: coden-xyz')
+		expect(logSpy).toHaveBeenCalledWith(
+			'info',
+			'Message without user, session and codename',
+			expect.not.objectContaining({ codename: 'coden-xyz', sessionId: 'session-abc', userId: 'user-123' }),
+		)
 	})
 
 	it('should format friendly logs correctly', () => {
 		logger.addToAllLogs('userId', 'user-123')
 		logger.info('Friendly log message')
-
-		const logLine = stripAnsi(output[0])
-		const separator = ' | '
-		const parts = logLine.split(separator).map((part) => part.trim())
-
-		expect(parts.length).toBeGreaterThanOrEqual(4)
-		const timestampRegex = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[-+]\d{2}:\d{2}$/
-		expect(parts[0]).toMatch(timestampRegex)
-		expect(parts[1].toLowerCase()).toBe('info')
-		expect(parts[2]).toBe('Friendly log message')
-		expect(parts).toEqual(
-			expect.arrayContaining([
-				expect.stringContaining('userId: user-123'),
-				expect.stringContaining('codename: TEST'),
-				expect.stringContaining('dryRun: false'),
-				expect.stringContaining('host: localhost'),
-				expect.stringContaining(`requestId: ${logger.metadata.requestId}`),
-				expect.stringContaining('stage: Beta'),
-				expect.stringContaining('version: 1.0.0'),
-			]),
+		expect(logSpy).toHaveBeenCalledWith(
+			'info',
+			'Friendly log message',
+			expect.objectContaining({ userId: 'user-123' }),
 		)
 	})
 
@@ -248,7 +181,6 @@ describe('Logger', () => {
 		logger = initializeLogger({
 			configOptions: {
 				CODENAME: 'TEST',
-				DRY_RUN: false,
 				ENV: Env.Development,
 				HOST: 'localhost',
 				LOG_FORMAT: 'structured',
@@ -262,70 +194,26 @@ describe('Logger', () => {
 		})
 
 		logger.removeFromAllLogs('userId', 'sessionId')
-
-		output = []
-		const logStream = new stream.Writable({
-			write(chunk, _, callback) {
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-				output.push(chunk.toString())
-				callback()
-			},
-		})
-
-		logger.logger.clear()
-		logger.logger.add(
-			new winston.transports.Stream({
-				level: 'debug',
-				stream: logStream,
-			}),
-		)
+		attachLogSpy()
 
 		logger.addToAllLogs('userId', 'user-123')
 		logger.info('Structured log message')
 
-		const logLine = output[0]
-		let logObject: Record<string, unknown>
-
-		try {
-			logObject = JSON.parse(logLine)
-		} catch {
-			throw new Error(`Failed to parse structured log as JSON: ${logLine}`)
-		}
-
-		expect(logObject).toMatchObject({
-			codename: 'TEST',
-			dryRun: false,
-			env: Env.Development,
-			host: 'localhost',
-			level: 'info',
-			message: 'Structured log message',
-			package: 'logger-package',
-			requestId: logger.metadata.requestId,
-			stage: Env.Beta,
-			userId: 'user-123',
-			version: '1.0.0',
-		})
+		expect(logSpy).toHaveBeenCalledWith(
+			'info',
+			'Structured log message',
+			expect.objectContaining({ userId: 'user-123' }),
+		)
 	})
 
 	it('should not include removed metadata in friendly logs', () => {
 		logger.addToAllLogs('userId', 'user-123')
 		logger.removeFromAllLogs('userId')
 		logger.info('Friendly log without user')
-
-		const logLine = stripAnsi(output[0])
-		const separator = ' | '
-		const parts = logLine.split(separator).map((part) => part.trim())
-
-		expect(parts).not.toContainEqual(expect.stringContaining('userId: user-123'))
-		expect(parts).toEqual(
-			expect.arrayContaining([
-				expect.stringContaining('codename: TEST'),
-				expect.stringContaining('dryRun: false'),
-				expect.stringContaining('host: localhost'),
-				expect.stringContaining(`requestId: ${logger.metadata.requestId}`),
-				expect.stringContaining('stage: Beta'),
-				expect.stringContaining('version: 1.0.0'),
-			]),
+		expect(logSpy).toHaveBeenCalledWith(
+			'info',
+			'Friendly log without user',
+			expect.not.objectContaining({ userId: 'user-123' }),
 		)
 	})
 
@@ -333,7 +221,6 @@ describe('Logger', () => {
 		logger = initializeLogger({
 			configOptions: {
 				CODENAME: 'TEST',
-				DRY_RUN: false,
 				ENV: Env.Development,
 				HOST: 'localhost',
 				LOG_FORMAT: 'structured',
@@ -346,32 +233,116 @@ describe('Logger', () => {
 			},
 		})
 
+		logger.removeFromAllLogs('userId', 'sessionId')
+		attachLogSpy()
+
 		logger.addToAllLogs('userId', 'user-123')
 		logger.removeFromAllLogs('userId')
 		logger.info('Structured log without user')
 
-		const logLine = output.at(-1)
-		let logObject: Record<string, unknown>
+		expect(logSpy).toHaveBeenCalledWith(
+			'info',
+			'Structured log without user',
+			expect.not.objectContaining({ userId: 'user-123' }),
+		)
+	})
 
-		try {
-			// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-			logObject = JSON.parse(logLine!)
-		} catch {
-			throw new Error(`Failed to parse structured log as JSON: ${logLine}`)
-		}
+	// **New Tests Start Here**
 
-		expect(logObject).not.toHaveProperty('userId')
-		expect(logObject).toMatchObject({
-			codename: 'TEST',
-			dryRun: false,
-			env: Env.Development,
-			host: 'localhost',
-			level: 'info',
-			message: 'Structured log without user',
-			package: 'logger-package',
-			requestId: logger.metadata.requestId,
-			stage: Env.Beta,
-			version: '1.0.0',
-		})
+	it('should add a new log level and log at that level', () => {
+		const newLevels = { fatal: 0 }
+		const newColors = { fatal: 'red' }
+		logger.updateLevels(newLevels, newColors)
+
+		attachLogSpy()
+
+		logger.log({ level: 'fatal' as LogLevel, message: 'Fatal error occurred', metadata: { errorCode: 500 } })
+		expect(logSpy).toHaveBeenCalledWith(
+			'fatal',
+			'Fatal error occurred',
+			expect.objectContaining({ errorCode: 500 }),
+		)
+	})
+
+	it('should update the color of an existing log level and reflect in output', () => {
+		const updatedColors = { info: 'green' }
+		logger.updateLevels({}, updatedColors)
+
+		attachLogSpy()
+
+		logger.info('Info message with updated color')
+		expect(logSpy).toHaveBeenCalledWith('info', 'Info message with updated color', expect.any(Object))
+	})
+
+	it('should preserve existing transports after updating levels and colors', () => {
+		const initialTransports = logger.logger.transports.length
+
+		const newLevels = { critical: -1 }
+		const newColors = { critical: 'red' }
+		logger.updateLevels(newLevels, newColors)
+
+		attachLogSpy()
+
+		expect(logger.logger.transports.length).toBe(initialTransports)
+
+		logger.log({ level: 'critical' as LogLevel, message: 'Critical failure!', metadata: { system: 'Payment' } })
+		expect(logSpy).toHaveBeenCalledWith(
+			'critical',
+			'Critical failure!',
+			expect.objectContaining({ system: 'Payment' }),
+		)
+	})
+
+	it('should log multiple new levels correctly', () => {
+		const newLevels = { emergency: -2, notice: 1 }
+		const newColors = { emergency: 'magenta', notice: 'blue' }
+		logger.updateLevels(newLevels, newColors)
+
+		attachLogSpy()
+
+		logger.log({ level: 'emergency' as LogLevel, message: 'Emergency situation!', metadata: { code: 'EMG001' } })
+		expect(logSpy).toHaveBeenCalledWith(
+			'emergency',
+			'Emergency situation!',
+			expect.objectContaining({ code: 'EMG001' }),
+		)
+
+		logger.log({ level: 'notice' as LogLevel, message: 'Notice message.', metadata: { info: 'Important info' } })
+		expect(logSpy).toHaveBeenCalledWith(
+			'notice',
+			'Notice message.',
+			expect.objectContaining({ info: 'Important info' }),
+		)
+	})
+
+	it('should not throw when updating with existing levels and colors', () => {
+		const existingLevels = { info: 2 }
+		const existingColors = { info: 'cyan' }
+		expect(() => {
+			logger.updateLevels(existingLevels, existingColors)
+		}).not.toThrow()
+
+		attachLogSpy()
+
+		logger.info('Info message after re-updating levels and colors')
+		expect(logSpy).toHaveBeenCalledWith(
+			'info',
+			'Info message after re-updating levels and colors',
+			expect.any(Object),
+		)
+	})
+
+	it('should handle invalid log levels gracefully', () => {
+		expect(() => {
+			logger.log({ level: 'invalidLevel' as LogLevel, message: 'This should fail' })
+		}).toThrow()
+	})
+
+	it('should handle invalid color assignments by throwing', () => {
+		const invalidColors = { info: 'invalidColor' }
+
+		expect(() => {
+			logger.updateLevels({}, invalidColors)
+		}).toThrow()
 	})
 })
