@@ -32,6 +32,7 @@ A TypeScript logging utility optimized for structured logging in AWS Lambda envi
 - **Singleton Pattern**: Ensures consistent configuration across the application.
 - **Environment-Based Configurations**: Configure log formats, levels, and transports using environment variables.
 - **Persistent Metadata**: Easily add or remove metadata fields from all subsequent logs via `addToAllLogs` and `removeFromAllLogs`.
+- **Hidden Fields Management**: Control which metadata fields are excluded from logs via `LOG_FRIENDLY_FIELDS_HIDE` and `LOG_STRUCTURED_FIELDS_HIDE`.
 
 ## Installation
 
@@ -69,6 +70,11 @@ logger.error('an error occurred', { errorDetails: 'error details here' })
 // remove metadata keys (single or multiple)
 logger.removeFromAllLogs('userId', 'sessionId')
 
+// dynamically hide specific fields from logs
+logger.updateInstance({
+    configOptions: { LOG_FRIENDLY_FIELDS_HIDE: ['sessionId'] },
+})
+
 // publish metrics to cloudwatch
 await logger.publishMetric({
     metricName: 'requestCount',
@@ -82,9 +88,12 @@ await logger.publishMetric({
 The logger supports multiple configuration options to control logging format, levels, and transports. Some commonly used environment variables include:
 
 - `LOG_LEVEL`: Set the log level (`debug`, `info`, `warn`, `error`).
-- `LOG_FORMAT`: Choose between `structured` for json logging and `friendly` for colorized console output. (default: friendly)
+- `LOG_FORMAT`: Choose between `structured` for JSON logging and `friendly` for colorized console output (default: friendly).
+- `LOG_FRIENDLY_FIELDS_HIDE`: A comma-separated list of metadata fields to exclude from friendly logs.
+- `LOG_STRUCTURED_FIELDS_HIDE`: A comma-separated list of metadata fields to exclude from structured logs.
 - `REQUEST_ID`: Optionally set a request ID for tracing log entries.
 - `SIMPLE_LOGS`: Optionally make log entries simpler (omit codename, version, use shorter requestId–useful for local development).
+- `INIT_LOGGER`: Automatically initialize the logger if not set to `false`.
 
 ### DotEnv
 

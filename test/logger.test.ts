@@ -9,6 +9,8 @@ import { PutMetricDataCommand } from '@aws-sdk/client-cloudwatch'
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { Env } from '@krauters/structures'
 
+import type { GetLogObjectParams } from '../src/index'
+
 import { initializeLogger, Logger, LogLevel, MetricUnit } from '../src/index'
 
 jest.mock('@aws-sdk/client-cloudwatch')
@@ -344,5 +346,143 @@ describe('Logger', () => {
 		expect(() => {
 			logger.updateLevels({}, invalidColors)
 		}).toThrow()
+	})
+})
+
+describe('Logger.getLogObject', () => {
+	let logger: Logger
+
+	beforeEach(() => {
+		logger = new Logger({
+			configOptions: {
+				CODENAME: 'TEST',
+				ENV: Env.Development,
+				HOST: 'mock-host',
+				LOG_FORMAT: 'friendly',
+				LOG_LEVEL: LogLevel.Debug,
+				LOG_SECTION_SEPARATOR: ' | ',
+				PACKAGE: 'logger-package',
+				STAGE: Env.Beta,
+				TIMESTAMP_FORMAT: 'YYYY-MM-DD HH:mm:ssZ',
+				VERSION: '1.0.0',
+			},
+		})
+
+		// Ensure consistent metadata across all tests
+		logger.metadata = {
+			codename: 'TEST',
+			host: 'mock-host',
+			package: 'logger-package',
+			stage: 'Beta',
+			version: '1.0.0',
+		}
+	})
+
+	it('should combine metadata and info while excluding specified fields', () => {
+		logger.addToAllLogs('requestId', '1234')
+
+		const originalMetadata = JSON.parse(JSON.stringify(logger.metadata))
+		const originalInfo = { level: 'info', message: 'Test message', userId: 'user-5678' }
+
+		const params: GetLogObjectParams = {
+			fieldsToHide: ['host', 'requestId'],
+			info: originalInfo,
+		}
+
+		const result = logger.getLogObject(params)
+
+		expect(result).toEqual({
+			codename: 'TEST',
+			level: 'info',
+			message: 'Test message',
+			package: 'logger-package',
+			stage: 'Beta',
+			userId: 'user-5678',
+			version: '1.0.0',
+		})
+
+		// Validate original metadata and info are unchanged
+		expect(logger.metadata).toEqual(originalMetadata)
+		expect(originalInfo).toEqual({ level: 'info', message: 'Test message', userId: 'user-5678' })
+	})
+
+	it('should handle empty fieldsToHide gracefully', () => {
+		logger.updateInstance({ configOptions: { LOG_FRIENDLY_FIELDS_HIDE: [] } })
+
+		const originalMetadata = JSON.parse(JSON.stringify(logger.metadata))
+		const originalInfo = { level: 'info', message: 'Test message' }
+
+		const params: GetLogObjectParams = { info: originalInfo }
+
+		const result = logger.getLogObject(params)
+
+		expect(result).toEqual({ ...originalMetadata, ...originalInfo })
+		expect(logger.metadata).toEqual(originalMetadata)
+	})
+
+	it('should exclude fields defined in LOG_FRIENDLY_FIELDS_HIDE', () => {
+		const originalMetadata = JSON.parse(JSON.stringify(logger.metadata))
+		const originalInfo = { level: 'info', message: 'Test message', userId: 'user-5678' }
+
+		const params: GetLogObjectParams = { fieldsToHide: ['host', 'level'], info: originalInfo }
+
+		const result = logger.getLogObject(params)
+
+		expect(result).toEqual({
+			codename: 'TEST',
+			message: 'Test message',
+			package: 'logger-package',
+			stage: 'Beta',
+			userId: 'user-5678',
+			version: '1.0.0',
+		})
+
+		// Validate original metadata and info are unchanged
+		expect(logger.metadata).toEqual(originalMetadata)
+		expect(originalInfo).toEqual({ level: 'info', message: 'Test message', userId: 'user-5678' })
+	})
+
+	it('should return only metadata when info is empty', () => {
+		logger.updateInstance({ configOptions: { LOG_FRIENDLY_FIELDS_HIDE: ['stage'] } })
+
+		const originalMetadata = JSON.parse(JSON.stringify(logger.metadata))
+
+		const params: GetLogObjectParams = { info: {} }
+
+		const result = logger.getLogObject(params)
+
+		expect(result).toEqual(originalMetadata)
+		expect(logger.metadata).toEqual(originalMetadata)
+	})
+
+	it('should return an empty object when all fields are excluded', () => {
+		const originalMetadata = JSON.parse(JSON.stringify(logger.metadata))
+		const originalInfo = { level: 'info', message: 'Test message' }
+
+		const params: GetLogObjectParams = {
+			fieldsToHide: ['codename', 'host', 'package', 'stage', 'version', 'requestId', 'level', 'message'],
+			info: originalInfo,
+		}
+
+		const result = logger.getLogObject(params)
+
+		expect(result).toEqual({})
+		expect(logger.metadata).toEqual(originalMetadata)
+		expect(originalInfo).toEqual({ level: 'info', message: 'Test message' })
+	})
+
+	it('should handle undefined LOG_FRIENDLY_FIELDS_HIDE gracefully', () => {
+		const originalMetadata = JSON.parse(JSON.stringify(logger.metadata))
+		const originalInfo = { level: 'info', message: 'Test message' }
+
+		const params: GetLogObjectParams = { info: originalInfo }
+
+		const result = logger.getLogObject(params)
+
+		expect(result).toEqual({ ...originalMetadata, ...originalInfo })
+
+		// Validate original metadata and info are unchanged
+		expect(logger.metadata).toEqual(originalMetadata)
+		expect(originalInfo).toEqual({ level: 'info', message: 'Test message' })
 	})
 })

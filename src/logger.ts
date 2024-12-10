@@ -11,7 +11,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { addColors, createLogger, format, transports, config as winstonConfig } from 'winston'
 
 import type { Config } from './config'
-import type { LoggerOptions, LogOptions, PublishMetricOptions } from './structures'
+import type { GetLogObjectParams, LoggerOptions, LogOptions, PublishMetricOptions } from './structures'
 
 import { getConfig } from './config'
 import { empty, LogLevel } from './structures'
@@ -104,12 +104,24 @@ export class Logger {
 		return format.combine(
 			format.colorize({ all: true }),
 			format.timestamp({ format: this.config.TIMESTAMP_FORMAT }),
-			format.printf((info) => this.formatLogMessage(info, separator)),
+			format.printf((info) =>
+				this.formatLogMessage(
+					this.getLogObject({ fieldsToHide: this.config.LOG_FRIENDLY_FIELDS_HIDE, info }),
+					separator,
+				),
+			),
 		)
 	}
 
-	public getLogObject(info: Record<string, unknown>): Record<string, unknown> {
-		return { ...this.metadata, ...info }
+	public getLogObject({ fieldsToHide = [], info }: GetLogObjectParams): Record<string, unknown> {
+		const combined = { ...this.metadata, ...info }
+
+		for (const field of fieldsToHide) {
+			// eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+			delete combined[field]
+		}
+
+		return combined
 	}
 
 	public getRequestId(context?: LambdaContext): string {
@@ -123,7 +135,9 @@ export class Logger {
 	public getStructuredFormat(): Format {
 		return format.combine(
 			format.timestamp({ format: this.config.TIMESTAMP_FORMAT }),
-			format.printf((info) => JSON.stringify(this.getLogObject(info))),
+			format.printf((info) =>
+				JSON.stringify(this.getLogObject({ fieldsToHide: this.config.LOG_STRUCTURED_FIELDS_HIDE, info })),
+			),
 		)
 	}
 
