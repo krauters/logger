@@ -15,8 +15,10 @@ export interface ConfigOptions {
 	HOST: string
 	LOG_FORMAT: string
 	LOG_LEVEL: LogLevel
+	LOG_SECTION_SEPARATOR: string
 	PACKAGE: string
 	STAGE: Stage
+	TIMESTAMP_FORMAT: string
 	VERSION: string
 }
 

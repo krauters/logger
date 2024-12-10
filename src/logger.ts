@@ -1,3 +1,4 @@
+/* logger/src/logger.ts */
 /* eslint-disable @typescript-eslint/naming-convention */
 
 import type { Context as LambdaContext } from 'aws-lambda'
@@ -30,7 +31,7 @@ export class Logger {
 		this.config = getConfig(configOptions)
 
 		const requestId = this.getRequestId(context)
-		this.metadata = { ...this.getBaseMetadata(requestId) }
+		this.metadata = this.getBaseMetadata(requestId)
 
 		this.logger = createLogger({
 			format: customFormat ?? this.getFormatter(),
@@ -55,25 +56,24 @@ export class Logger {
 		this.metadata[key] = value
 	}
 
-	public debug(message: string, data?: Metadata): void {
-		this.log({ level: LogLevel.Debug, message, metadata: data })
+	public debug(message: string, data?: Metadata): string {
+		return this.log({ level: LogLevel.Debug, message, metadata: data })
 	}
 
-	public error(message: string, data?: Metadata): void {
-		this.log({ level: LogLevel.Error, message, metadata: data })
+	public error(message: string, data?: Metadata): string {
+		return this.log({ level: LogLevel.Error, message, metadata: data })
 	}
 
 	public formatLogMessage(info: Record<string, unknown>, separator: string): string {
 		const { level, message, timestamp, ...rest } = info
-		const logObject = this.getLogObject(rest)
 
 		return [
 			chalk.blue(String(timestamp)),
 			String(level),
 			String(message),
-			...Object.entries(logObject)
+			...Object.entries(rest)
 				.filter(([, value]) => value !== undefined && value !== '')
-				.map(([key, value]) => `${key}: ${value}`),
+				.map(([key, value]) => `${key}: ${String(value)}`),
 		].join(separator)
 	}
 
@@ -120,14 +120,17 @@ export class Logger {
 		)
 	}
 
-	public info(message: string, data?: Metadata): void {
-		this.log({ level: LogLevel.Info, message, metadata: data })
+	public info(message: string, data?: Metadata): string {
+		return this.log({ level: LogLevel.Info, message, metadata: data })
 	}
 
-	public log(options: LogOptions): void {
+	public log(options: LogOptions): string {
 		const { level, message, metadata } = options
 		const combinedMeta = { ...this.metadata, ...(metadata ?? {}) }
-		this.logger.log(level, message, { metadata: combinedMeta })
+
+		this.logger.log(level, message, combinedMeta)
+
+		return message
 	}
 
 	public async publishMetric(options: PublishMetricOptions): Promise<void> {
@@ -170,15 +173,16 @@ export class Logger {
 			const newRequestId = this.getRequestId(context)
 			const userFields = { ...this.metadata }
 
-			// remove old base fields
 			for (const key of Object.keys(this.getBaseMetadata(newRequestId))) {
 				// eslint-disable-next-line @typescript-eslint/no-dynamic-delete
 				delete userFields[key]
 			}
 
 			this.metadata = { ...this.getBaseMetadata(newRequestId), ...userFields }
+
+			// Update the logger's format based on the new config
+			this.logger.format = this.getFormatter()
 		} else if (context) {
-			// if only context changes, refresh requestId & base fields
 			const newRequestId = this.getRequestId(context)
 			const userFields = { ...this.metadata }
 			for (const key of Object.keys(this.getBaseMetadata(newRequestId))) {
@@ -187,6 +191,9 @@ export class Logger {
 			}
 
 			this.metadata = { ...this.getBaseMetadata(newRequestId), ...userFields }
+
+			// Update the logger's format based on the new config
+			this.logger.format = this.getFormatter()
 		}
 
 		if (customFormat) {
