@@ -13,6 +13,7 @@ export interface ConfigOptions {
 	DRY_RUN: boolean
 	ENV: Env
 	HOST: string
+	LOG_FORMAT: string
 	LOG_LEVEL: LogLevel
 	PACKAGE: string
 	STAGE: Stage
@@ -31,6 +32,7 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 		'DRY_RUN',
 		'ENV',
 		'HOST',
+		'LOG_FORMAT',
 		'LOG_LEVEL',
 		'LOG_SECTION_SEPARATOR',
 		'PACKAGE',
@@ -51,6 +53,7 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 			DRY_RUN: false,
 			ENV: Env.Unknown,
 			HOST: hostname(),
+			LOG_FORMAT: 'friendly',
 			LOG_LEVEL: LogLevel.Info,
 			LOG_SECTION_SEPARATOR: ' | ',
 			PACKAGE: empty,
