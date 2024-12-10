@@ -45,3 +45,8 @@ export interface PublishMetricOptions {
 }
 
 export const empty = 'NOTSET'
+
+export interface GetLogObjectParams {
+	fieldsToHide?: string[]
+	info: Record<string, unknown>
+}
