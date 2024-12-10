@@ -1,5 +1,6 @@
 import { log } from '../src/instance'
 
+log.addToAllLogs('shared', 'GreatValue')
 log.debug('Creating a lockfile.')
 log.info('An important thing has happened, but not too important.', {
 	allowOtherDevices: 'NEVER',
