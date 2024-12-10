@@ -1,15 +1,14 @@
-/* logger/src/logger.ts */
 /* eslint-disable @typescript-eslint/naming-convention */
 
 import type { Context as LambdaContext } from 'aws-lambda'
 import type { Format } from 'logform'
-import type { Logger as WinstonLogger } from 'winston'
+import type { Logger as WinstonLoggerInstance } from 'winston'
 
 import { CloudWatchClient, PutMetricDataCommand, StandardUnit } from '@aws-sdk/client-cloudwatch'
 import { Env } from '@krauters/structures'
 import chalk from 'chalk'
 import { v4 as uuidv4 } from 'uuid'
-import { createLogger, format, transports } from 'winston'
+import { addColors, createLogger, format, transports, config as winstonConfig } from 'winston'
 
 import type { Config } from './config'
 import type { LoggerOptions, LogOptions, PublishMetricOptions } from './structures'
@@ -23,8 +22,10 @@ export class Logger {
 	public static instance: Logger
 	public cloudwatch: CloudWatchClient
 	public config: Config
-	public logger: WinstonLogger
+	public logger: WinstonLoggerInstance
 	public metadata: Metadata = {}
+	private colors: Record<string, string | string[]>
+	private levels: Record<string, number>
 
 	public constructor(options: LoggerOptions = {}) {
 		const { configOptions, context, format: customFormat, transports: customTransports } = options
@@ -33,9 +34,15 @@ export class Logger {
 		const requestId = this.getRequestId(context)
 		this.metadata = this.getBaseMetadata(requestId)
 
+		this.levels = { ...winstonConfig.npm.levels, trace: 8 }
+		this.colors = { ...winstonConfig.npm.colors, trace: 'magenta' }
+
+		addColors(this.colors)
+
 		this.logger = createLogger({
 			format: customFormat ?? this.getFormatter(),
 			level: this.config.LOG_LEVEL,
+			levels: this.levels,
 			transports: customTransports ?? [new transports.Console()],
 		})
 
@@ -164,6 +171,10 @@ export class Logger {
 		}
 	}
 
+	public trace(message: string, data?: Metadata): void {
+		this.log({ level: LogLevel.Trace, message, metadata: data })
+	}
+
 	public updateInstance(options: LoggerOptions): void {
 		const { configOptions, context, format: customFormat, transports: customTransports } = options
 
@@ -180,7 +191,6 @@ export class Logger {
 
 			this.metadata = { ...this.getBaseMetadata(newRequestId), ...userFields }
 
-			// Update the logger's format based on the new config
 			this.logger.format = this.getFormatter()
 		} else if (context) {
 			const newRequestId = this.getRequestId(context)
@@ -192,7 +202,6 @@ export class Logger {
 
 			this.metadata = { ...this.getBaseMetadata(newRequestId), ...userFields }
 
-			// Update the logger's format based on the new config
 			this.logger.format = this.getFormatter()
 		}
 
@@ -208,6 +217,24 @@ export class Logger {
 		}
 	}
 
+	public updateLevels(newLevels: Record<string, number>, newColors: Record<string, string>): void {
+		this.levels = { ...this.levels, ...newLevels }
+		this.colors = { ...this.colors, ...newColors }
+		addColors(this.colors)
+
+		const existingTransports = this.logger.transports.map((transport) => transport)
+		this.logger.clear()
+
+		this.logger = createLogger({
+			format: this.getFormatter(),
+			level: this.config.LOG_LEVEL,
+			levels: this.levels,
+			transports: existingTransports,
+		})
+
+		this.info('Logger levels and colors have been updated.')
+	}
+
 	public warn(message: string, data?: Metadata): void {
 		this.log({ level: LogLevel.Warn, message, metadata: data })
 	}
@@ -215,7 +242,6 @@ export class Logger {
 	private getBaseMetadata(requestId: string): Metadata {
 		const base = {
 			codename: this.config.CODENAME,
-			dryRun: this.config.DRY_RUN,
 			env: this.config.ENV,
 			host: this.config.HOST,
 			package: this.config.PACKAGE,
@@ -224,6 +250,7 @@ export class Logger {
 			version: this.config.VERSION,
 		}
 
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
 		return Object.fromEntries(Object.entries(base).filter(([, value]) => value !== empty && value !== Env.Unknown))
 	}
 }

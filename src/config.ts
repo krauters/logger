@@ -10,7 +10,6 @@ export type Config = ReturnType<typeof getConfig>
 
 export interface ConfigOptions {
 	CODENAME: string
-	DRY_RUN: boolean
 	ENV: Env
 	HOST: string
 	LOG_FORMAT: string
@@ -31,7 +30,6 @@ export interface ConfigOptions {
 export function getConfig(options?: Partial<ConfigOptions>) {
 	return EnvironmentBuilder.create(
 		'CODENAME',
-		'DRY_RUN',
 		'ENV',
 		'HOST',
 		'LOG_FORMAT',
@@ -44,7 +42,6 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 		'VERSION',
 	)
 		.optionals('REQUEST_ID')
-		.transform((value) => !isFalsy(value), 'DRY_RUN')
 		.transform((value) => !isFalsy(value), 'SIMPLE_LOGS')
 		.transform((value) => value as Env, 'ENV')
 		.transform((value) => value as Stage, 'STAGE')
@@ -52,7 +49,6 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 		.defaults({
 			// Actual Defaults
 			CODENAME: empty,
-			DRY_RUN: false,
 			ENV: Env.Unknown,
 			HOST: hostname(),
 			LOG_FORMAT: 'friendly',
