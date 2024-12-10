@@ -11,33 +11,39 @@ import { LogLevel, MetricUnit } from '../src/structures'
 
 jest.mock('@aws-sdk/client-cloudwatch')
 
+function getCallMeta(callArgs: unknown[]): Record<string, unknown> {
+	if (callArgs.length > 2 && typeof callArgs[2] === 'object' && callArgs[2] !== null) {
+		const m = (callArgs[2] as { metadata?: Record<string, unknown> }).metadata
+
+		return m ?? {}
+	}
+
+	return {}
+}
+
+// eslint-disable-next-line max-lines-per-function
 describe('Logger', () => {
 	let logger: Logger
 	let cloudWatchClientMock: jest.Mock
 	let output: string[]
 
 	beforeEach(() => {
-		// Initialize the logger with Debug level
 		logger = initializeLogger({
 			configOptions: { LOG_LEVEL: LogLevel.Debug },
 		})
 
-		// Mock CloudWatchClient's send method with a resolved promise
 		cloudWatchClientMock = jest.fn().mockResolvedValue({} as never)
 		logger.cloudwatch = { send: cloudWatchClientMock } as unknown as CloudWatchClient
 
-		// Custom stream to capture logs
 		output = []
 		const logStream = new stream.Writable({
 			write(chunk, _, callback) {
-				// Remove 'encoding' parameter
 				// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
 				output.push(chunk.toString())
 				callback()
 			},
 		})
 
-		// Replace transports with custom stream-based transport
 		logger.logger.clear()
 		logger.logger.add(
 			new winston.transports.Stream({
@@ -93,11 +99,9 @@ describe('Logger', () => {
 	})
 
 	it('should throw error if invalid LOG_FORMAT is provided', () => {
-		process.env.LOG_FORMAT = 'invalidFormat'
 		expect(() => {
-			logger.getFormatter()
+			new Logger({ configOptions: { LOG_FORMAT: 'invalidFormat' } })
 		}).toThrowError(/Invalid LOG_FORMAT/)
-		delete process.env.LOG_FORMAT
 	})
 
 	it('should initialize logger with default config when INIT_LOGGER is set to true', () => {
@@ -110,5 +114,46 @@ describe('Logger', () => {
 		process.env.INIT_LOGGER = 'false'
 		const freshLogger = new Logger({ configOptions: { LOG_LEVEL: LogLevel.Info } })
 		expect(freshLogger).toBeDefined()
+	})
+
+	it('should add metadata to all subsequent logs', () => {
+		const logSpy = jest.spyOn(logger.logger, 'log')
+		logger.addToAllLogs('userId', 'user-123')
+		logger.info('Message with user')
+		const meta = getCallMeta(logSpy.mock.calls[0])
+		expect(meta).toMatchObject({ userId: 'user-123' })
+	})
+
+	it('should remove a single metadata key from all subsequent logs', () => {
+		const logSpy = jest.spyOn(logger.logger, 'log')
+		logger.addToAllLogs('userId', 'user-123')
+		logger.removeFromAllLogs('userId')
+		logger.info('Message without user')
+		const meta = getCallMeta(logSpy.mock.calls.at(-1) as unknown[])
+		expect(meta).not.toHaveProperty('userId')
+	})
+
+	it('should remove multiple metadata keys when passed separately', () => {
+		const logSpy = jest.spyOn(logger.logger, 'log')
+		logger.addToAllLogs('userId', 'user-123')
+		logger.addToAllLogs('sessionId', 'session-abc')
+		logger.removeFromAllLogs('userId', 'sessionId')
+		logger.info('Message without user and session')
+		const meta = getCallMeta(logSpy.mock.calls.at(-1) as unknown[])
+		expect(meta).not.toHaveProperty('userId')
+		expect(meta).not.toHaveProperty('sessionId')
+	})
+
+	it('should remove multiple metadata keys when passed as an array', () => {
+		const logSpy = jest.spyOn(logger.logger, 'log')
+		logger.addToAllLogs('userId', 'user-123')
+		logger.addToAllLogs('sessionId', 'session-abc')
+		logger.addToAllLogs('codename', 'coden-xyz')
+		logger.removeFromAllLogs(['userId', 'sessionId', 'codename'])
+		logger.info('Message without user, session and codename')
+		const meta = getCallMeta(logSpy.mock.calls.at(-1) as unknown[])
+		expect(meta).not.toHaveProperty('userId')
+		expect(meta).not.toHaveProperty('sessionId')
+		expect(meta).not.toHaveProperty('codename')
 	})
 })

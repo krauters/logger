@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/naming-convention */
 
 import type { Context as LambdaContext } from 'aws-lambda'
@@ -17,21 +16,21 @@ import type { LoggerOptions, LogOptions, PublishMetricOptions } from './structur
 import { getConfig } from './config'
 import { empty, LogLevel } from './structures'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Metadata = Record<string, any>
+type Metadata = Record<string, unknown>
 
 export class Logger {
 	public static instance: Logger
 	public cloudwatch: CloudWatchClient
 	public config: Config
 	public logger: WinstonLogger
-	public requestId: string
+	public metadata: Metadata = {}
 
 	public constructor(options: LoggerOptions = {}) {
 		const { configOptions, context, format: customFormat, transports: customTransports } = options
-
 		this.config = getConfig(configOptions)
-		this.requestId = this.getRequestId(context)
+
+		const requestId = this.getRequestId(context)
+		this.metadata = { ...this.getBaseMetadata(requestId) }
 
 		this.logger = createLogger({
 			format: customFormat ?? this.getFormatter(),
@@ -52,23 +51,26 @@ export class Logger {
 		return Logger.instance
 	}
 
-	public debug(message: string, metadata?: Metadata): void {
-		this.log({ level: LogLevel.Debug, message, metadata })
+	public addToAllLogs(key: string, value: unknown): void {
+		this.metadata[key] = value
 	}
 
-	public error(message: string, metadata?: Metadata): void {
-		this.log({ level: LogLevel.Error, message, metadata })
+	public debug(message: string, data?: Metadata): void {
+		this.log({ level: LogLevel.Debug, message, metadata: data })
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	public formatLogMessage(info: Record<string, any>, separator: string): string {
-		const { level, message, metadata, timestamp, ...rest } = info
-		const logObject = this.getLogObject(rest, metadata)
+	public error(message: string, data?: Metadata): void {
+		this.log({ level: LogLevel.Error, message, metadata: data })
+	}
+
+	public formatLogMessage(info: Record<string, unknown>, separator: string): string {
+		const { level, message, timestamp, ...rest } = info
+		const logObject = this.getLogObject(rest)
 
 		return [
-			chalk.blue(timestamp),
-			level,
-			message,
+			chalk.blue(String(timestamp)),
+			String(level),
+			String(message),
 			...Object.entries(logObject)
 				.filter(([, value]) => value !== undefined && value !== '')
 				.map(([key, value]) => `${key}: ${value}`),
@@ -81,65 +83,26 @@ export class Logger {
 			structured: this.getStructuredFormat.bind(this),
 		}
 
-		const formatType = (process.env.LOG_FORMAT ?? 'friendly') as keyof typeof formatters
-
-		if (!formatters[formatType]) {
-			const validFormats = Object.keys(formatters).join(', ')
-			throw new Error(
-				`Invalid LOG_FORMAT '${process.env.LOG_FORMAT}'. Expected one of [${validFormats}]. ` +
-					`Defaulting to 'friendly' format.`,
-			)
+		const formatType = this.config.LOG_FORMAT as keyof typeof formatters
+		if (!(formatType in formatters)) {
+			throw new Error(`Invalid LOG_FORMAT [${this.config.LOG_FORMAT}] provided by config.`)
 		}
 
 		return formatters[formatType]()
 	}
 
 	public getFriendlyFormat(): Format {
-		const separator = process.env.LOG_SECTION_SEPARATOR ?? ' | '
+		const separator = this.config.LOG_SECTION_SEPARATOR
 
 		return format.combine(
 			format.colorize({ all: true }),
-			format.timestamp({ format: this.config.TIMESTAMP_FORMAT || 'YYYY-MM-DD HH:mm:ss' }),
+			format.timestamp({ format: this.config.TIMESTAMP_FORMAT }),
 			format.printf((info) => this.formatLogMessage(info, separator)),
 		)
 	}
 
-	public getLogObject(info: Record<string, unknown>, metadata: Metadata = {}): Record<string, unknown> {
-		if (this.config.SIMPLE_LOGS) {
-			return {
-				...info,
-				dryRun: this.config.DRY_RUN,
-				requestId: this.requestId,
-				...metadata,
-			}
-		}
-
-		const base = {
-			codename: this.config.CODENAME,
-			dryRun: this.config.DRY_RUN,
-			env: this.config.ENV,
-			host: this.config.HOST,
-			package: this.config.PACKAGE,
-			requestId: this.requestId,
-			stage: this.config.STAGE,
-			version: this.config.VERSION,
-
-			// TODO - add support for additional fields to be set via environment variables.
-		}
-
-		const baseClean = Object.fromEntries(
-			Object.entries(base).filter(([, value]) => value !== empty && value !== Env.Unknown),
-		)
-
-		if (baseClean.env && baseClean.stage) {
-			console.warn('[Logger] Warning: Both "ENV" and "STAGE" are set. This might lead to unexpected behavior.')
-		}
-
-		return {
-			...info,
-			...baseClean,
-			...metadata,
-		}
+	public getLogObject(info: Record<string, unknown>): Record<string, unknown> {
+		return { ...this.metadata, ...info }
 	}
 
 	public getRequestId(context?: LambdaContext): string {
@@ -152,28 +115,23 @@ export class Logger {
 
 	public getStructuredFormat(): Format {
 		return format.combine(
-			format.timestamp({ format: this.config.TIMESTAMP_FORMAT || 'YYYY-MM-DD HH:mm:ss' }),
-			format.printf((info) => {
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				const logObject = this.getLogObject(info, (info as any)?.metadata)
-
-				return JSON.stringify(logObject)
-			}),
+			format.timestamp({ format: this.config.TIMESTAMP_FORMAT }),
+			format.printf((info) => JSON.stringify(this.getLogObject(info))),
 		)
 	}
 
-	public info(message: string, metadata?: Metadata): void {
-		this.log({ level: LogLevel.Info, message, metadata })
+	public info(message: string, data?: Metadata): void {
+		this.log({ level: LogLevel.Info, message, metadata: data })
 	}
 
 	public log(options: LogOptions): void {
 		const { level, message, metadata } = options
-		this.logger.log(level, message, { metadata })
+		const combinedMeta = { ...this.metadata, ...(metadata ?? {}) }
+		this.logger.log(level, message, { metadata: combinedMeta })
 	}
 
 	public async publishMetric(options: PublishMetricOptions): Promise<void> {
 		const { dimensions = [], metricName, unit = StandardUnit.Count, value } = options
-
 		const params = {
 			MetricData: [
 				{
@@ -195,15 +153,40 @@ export class Logger {
 		}
 	}
 
+	public removeFromAllLogs(...keys: (string | string[])[]): void {
+		const flattenedKeys = keys.flat()
+		for (const key of flattenedKeys) {
+			// eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+			delete this.metadata[key]
+		}
+	}
+
 	public updateInstance(options: LoggerOptions): void {
 		const { configOptions, context, format: customFormat, transports: customTransports } = options
 
 		if (configOptions) {
 			this.config = getConfig(configOptions)
-		}
 
-		if (context) {
-			this.requestId = this.getRequestId(context)
+			const newRequestId = this.getRequestId(context)
+			const userFields = { ...this.metadata }
+
+			// remove old base fields
+			for (const key of Object.keys(this.getBaseMetadata(newRequestId))) {
+				// eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+				delete userFields[key]
+			}
+
+			this.metadata = { ...this.getBaseMetadata(newRequestId), ...userFields }
+		} else if (context) {
+			// if only context changes, refresh requestId & base fields
+			const newRequestId = this.getRequestId(context)
+			const userFields = { ...this.metadata }
+			for (const key of Object.keys(this.getBaseMetadata(newRequestId))) {
+				// eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+				delete userFields[key]
+			}
+
+			this.metadata = { ...this.getBaseMetadata(newRequestId), ...userFields }
 		}
 
 		if (customFormat) {
@@ -212,13 +195,28 @@ export class Logger {
 
 		if (customTransports) {
 			this.logger.clear()
-			customTransports.forEach((transport) => {
+			for (const transport of customTransports) {
 				this.logger.add(transport)
-			})
+			}
 		}
 	}
 
-	public warn(message: string, metadata?: Metadata): void {
-		this.log({ level: LogLevel.Warn, message, metadata })
+	public warn(message: string, data?: Metadata): void {
+		this.log({ level: LogLevel.Warn, message, metadata: data })
+	}
+
+	private getBaseMetadata(requestId: string): Metadata {
+		const base = {
+			codename: this.config.CODENAME,
+			dryRun: this.config.DRY_RUN,
+			env: this.config.ENV,
+			host: this.config.HOST,
+			package: this.config.PACKAGE,
+			requestId: requestId,
+			stage: this.config.STAGE,
+			version: this.config.VERSION,
+		}
+
+		return Object.fromEntries(Object.entries(base).filter(([, value]) => value !== empty && value !== Env.Unknown))
 	}
 }

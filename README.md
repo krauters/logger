@@ -23,7 +23,6 @@
 A TypeScript logging utility optimized for structured logging in AWS Lambda environments. It provides a customizable, structured logger with flexible output options, including support for local development-friendly colorized output.
 
 ---
-
 ## Features
 
 - **Structured JSON Logging**: Ideal for Lambda and other cloud environments.
@@ -32,6 +31,7 @@ A TypeScript logging utility optimized for structured logging in AWS Lambda envi
 - **Customizable Formats**: Switch between JSON and human-readable formats.
 - **Singleton Pattern**: Ensures consistent configuration across the application.
 - **Environment-Based Configurations**: Configure log formats, levels, and transports using environment variables.
+- **Persistent Metadata**: Easily add or remove metadata fields from all subsequent logs via `addToAllLogs` and `removeFromAllLogs`.
 
 ## Installation
 
@@ -49,26 +49,31 @@ yarn add @krauters/logger
 
 ## Usage
 
-Basic example for initializing and using the logger:
-
 ```typescript
 import { Logger, LogLevel } from '@krauters/logger'
 
-// Initialize the logger with options
+// initialize the logger with options
 const logger = Logger.getInstance({
-	configOptions: { LOG_LEVEL: LogLevel.Debug },
+    configOptions: { LOG_LEVEL: LogLevel.Debug },
 })
 
-// Log messages at various levels
-logger.info('Info level log')
-logger.debug('Debug level log with metadata', { key: 'value' })
-logger.error('An error occurred', { errorDetails: 'Error details here' })
+// add persistent metadata
+logger.addToAllLogs('userId', 'abc123')
+logger.addToAllLogs('sessionId', 'xyz789')
 
-// Publish metrics to CloudWatch
+// log messages at various levels
+logger.info('info level log')
+logger.debug('debug level log with metadata', { key: 'value' })
+logger.error('an error occurred', { errorDetails: 'error details here' })
+
+// remove metadata keys (single or multiple)
+logger.removeFromAllLogs('userId', 'sessionId')
+
+// publish metrics to cloudwatch
 await logger.publishMetric({
-	metricName: 'RequestCount',
-	unit: 'Count',
-	value: 1,
+    metricName: 'requestCount',
+    unit: 'Count',
+    value: 1,
 })
 ```
 
