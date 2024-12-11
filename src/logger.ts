@@ -107,6 +107,7 @@ export class Logger {
 			format.printf((info) =>
 				this.formatLogMessage(
 					this.getLogObject({ fieldsToHide: this.config.LOG_FRIENDLY_FIELDS_HIDE, info }),
+					// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
 					separator,
 				),
 			),
@@ -125,6 +126,7 @@ export class Logger {
 	}
 
 	public getRequestId(context?: LambdaContext): string {
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-return
 		if (this.config.REQUEST_ID) return this.config.REQUEST_ID
 		if (context?.awsRequestId) return context.awsRequestId
 		if (this.config.SIMPLE_LOGS) return uuidv4().split('-')[0]
@@ -206,6 +208,9 @@ export class Logger {
 			this.metadata = { ...this.getBaseMetadata(newRequestId), ...userFields }
 
 			this.logger.format = this.getFormatter()
+
+			// Explicitly update log level
+			this.logger.level = this.config.LOG_LEVEL
 		} else if (context) {
 			const newRequestId = this.getRequestId(context)
 			const userFields = { ...this.metadata }
@@ -264,7 +269,6 @@ export class Logger {
 			version: this.config.VERSION,
 		}
 
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
 		return Object.fromEntries(Object.entries(base).filter(([, value]) => value !== empty && value !== Env.Unknown))
 	}
 }
