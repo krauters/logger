@@ -11,6 +11,7 @@ export type Config = ReturnType<typeof getConfig>
 export interface ConfigOptions {
 	CODENAME: string
 	ENV: Env
+	ENVIRONMENT_PREFIX?: string
 	HOST: string
 	LOG_FORMAT: string
 	LOG_FRIENDLY_FIELDS_HIDE?: string[]
@@ -20,7 +21,6 @@ export interface ConfigOptions {
 	PACKAGE: string
 	STAGE: Stage
 	TIMESTAMP_FORMAT: string
-	VERSION: string
 }
 
 /**
@@ -30,6 +30,7 @@ export interface ConfigOptions {
  * @returns The environment variable configuration.
  */
 export function getConfig(options?: Partial<ConfigOptions>) {
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-return
 	return EnvironmentBuilder.create(
 		'CODENAME',
 		'ENV',
@@ -43,6 +44,7 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 		'TIMESTAMP_FORMAT',
 		'VERSION',
 	)
+
 		.optionals('REQUEST_ID', 'LOG_FRIENDLY_FIELDS_HIDE', 'LOG_STRUCTURED_FIELDS_HIDE')
 		.transform((value) => !isFalsy(value), 'SIMPLE_LOGS')
 		.transform(
@@ -70,5 +72,6 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 			// Parameter Supplied Defaults
 			...options,
 		})
+		.withPrefix(options?.ENVIRONMENT_PREFIX ?? '')
 		.environment()
 }
