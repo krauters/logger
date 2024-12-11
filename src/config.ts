@@ -21,6 +21,7 @@ export interface ConfigOptions {
 	PACKAGE: string
 	STAGE: Stage
 	TIMESTAMP_FORMAT: string
+	VERSION: string
 }
 
 /**
@@ -30,7 +31,6 @@ export interface ConfigOptions {
  * @returns The environment variable configuration.
  */
 export function getConfig(options?: Partial<ConfigOptions>) {
-	// eslint-disable-next-line @typescript-eslint/no-unsafe-return
 	return EnvironmentBuilder.create(
 		'CODENAME',
 		'ENV',
@@ -44,8 +44,7 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 		'TIMESTAMP_FORMAT',
 		'VERSION',
 	)
-
-		.optionals('REQUEST_ID', 'LOG_FRIENDLY_FIELDS_HIDE', 'LOG_STRUCTURED_FIELDS_HIDE')
+		.optionals('REQUEST_ID', 'LOG_FRIENDLY_FIELDS_HIDE', 'LOG_STRUCTURED_FIELDS_HIDE', 'LOG_PREFIX')
 		.transform((value) => !isFalsy(value), 'SIMPLE_LOGS')
 		.transform(
 			(value) => (value.trim() === '' ? [] : value.replace(/\s/g, '').split(',')),
