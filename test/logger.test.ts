@@ -88,7 +88,7 @@ describe('Logger', () => {
 			timestamp: '2023-09-30 12:34:56',
 		}
 		const separator = ' | '
-		const formattedMessage = logger.formatLogMessage(info, separator)
+		const formattedMessage = logger.formatLogMessage(info, separator, '')
 		expect(formattedMessage).toContain('2023-09-30 12:34:56')
 	})
 

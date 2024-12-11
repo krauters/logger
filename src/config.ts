@@ -16,11 +16,13 @@ export interface ConfigOptions {
 	LOG_FORMAT: string
 	LOG_FRIENDLY_FIELDS_HIDE?: string[]
 	LOG_LEVEL: LogLevel
+	LOG_PREFIX: string
 	LOG_SECTION_SEPARATOR: string
 	LOG_STRUCTURED_FIELDS_HIDE?: string[]
 	PACKAGE: string
 	STAGE: Stage
 	TIMESTAMP_FORMAT: string
+	VERSION: string
 }
 
 /**
@@ -30,13 +32,13 @@ export interface ConfigOptions {
  * @returns The environment variable configuration.
  */
 export function getConfig(options?: Partial<ConfigOptions>) {
-	// eslint-disable-next-line @typescript-eslint/no-unsafe-return
 	return EnvironmentBuilder.create(
 		'CODENAME',
 		'ENV',
 		'HOST',
 		'LOG_FORMAT',
 		'LOG_LEVEL',
+		'LOG_PREFIX',
 		'LOG_SECTION_SEPARATOR',
 		'PACKAGE',
 		'SIMPLE_LOGS',
@@ -44,7 +46,6 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 		'TIMESTAMP_FORMAT',
 		'VERSION',
 	)
-
 		.optionals('REQUEST_ID', 'LOG_FRIENDLY_FIELDS_HIDE', 'LOG_STRUCTURED_FIELDS_HIDE')
 		.transform((value) => !isFalsy(value), 'SIMPLE_LOGS')
 		.transform(
@@ -62,6 +63,7 @@ export function getConfig(options?: Partial<ConfigOptions>) {
 			HOST: hostname(),
 			LOG_FORMAT: 'friendly',
 			LOG_LEVEL: LogLevel.Info,
+			LOG_PREFIX: '',
 			LOG_SECTION_SEPARATOR: ' | ',
 			PACKAGE: empty,
 			SIMPLE_LOGS: false,

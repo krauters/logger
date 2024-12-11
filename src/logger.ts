@@ -71,13 +71,13 @@ export class Logger {
 		return this.log({ level: LogLevel.Error, message, metadata: data })
 	}
 
-	public formatLogMessage(info: Record<string, unknown>, separator: string): string {
+	public formatLogMessage(info: Record<string, unknown>, separator: string, prefix: string): string {
 		const { level, message, timestamp, ...rest } = info
 
 		return [
 			chalk.blue(String(timestamp)),
 			String(level),
-			String(message),
+			prefix + String(message),
 			...Object.entries(rest)
 				.filter(([, value]) => value !== undefined && value !== '')
 				.map(([key, value]) => `${key}: ${String(value)}`),
@@ -99,7 +99,8 @@ export class Logger {
 	}
 
 	public getFriendlyFormat(): Format {
-		const separator = this.config.LOG_SECTION_SEPARATOR
+		const separator: string = this.config.LOG_SECTION_SEPARATOR
+		const prefix: string = this.config.LOG_PREFIX ?? ''
 
 		return format.combine(
 			format.colorize({ all: true }),
@@ -107,8 +108,8 @@ export class Logger {
 			format.printf((info) =>
 				this.formatLogMessage(
 					this.getLogObject({ fieldsToHide: this.config.LOG_FRIENDLY_FIELDS_HIDE, info }),
-					// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
 					separator,
+					prefix,
 				),
 			),
 		)
@@ -126,7 +127,6 @@ export class Logger {
 	}
 
 	public getRequestId(context?: LambdaContext): string {
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-return
 		if (this.config.REQUEST_ID) return this.config.REQUEST_ID
 		if (context?.awsRequestId) return context.awsRequestId
 		if (this.config.SIMPLE_LOGS) return uuidv4().split('-')[0]
@@ -269,6 +269,7 @@ export class Logger {
 			version: this.config.VERSION,
 		}
 
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
 		return Object.fromEntries(Object.entries(base).filter(([, value]) => value !== empty && value !== Env.Unknown))
 	}
 }
