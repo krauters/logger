@@ -1,4 +1,4 @@
 export * from './config'
-export * from './instance'
-export * from './logger'
+export * from './container'
+export type * from './logger'
 export * from './structures'
