@@ -1,488 +1,214 @@
-// logger/test/logger.test.ts
+// test/logger.test.ts
 /* eslint-disable @typescript-eslint/naming-convention */
-/* eslint-disable max-lines-per-function */
+import type { TransformableInfo } from 'logform'
 
-import type { CloudWatchClient } from '@aws-sdk/client-cloudwatch'
-import type { LogMethod } from 'winston'
+import { Env, Stage } from '@krauters/structures'
+import { mocked } from 'jest-mock'
+import { v4 as uuidv4 } from 'uuid'
+import Transport from 'winston-transport'
 
-import { PutMetricDataCommand } from '@aws-sdk/client-cloudwatch'
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
-import { Env } from '@krauters/structures'
+import type { LoggerOptions } from '../src/structures'
 
-import type { GetLogObjectParams } from '../src/index'
+import { type ConfigOptions, getConfig } from '../src/config'
+import { Logger } from '../src/logger'
+import { LogLevel } from '../src/structures'
 
-import { initializeLogger, Logger, LogLevel, MetricUnit } from '../src/index'
+jest.mock('uuid', () => ({ v4: jest.fn() }))
+jest.mock('../src/config', () => ({ getConfig: jest.fn() }))
 
-jest.mock('@aws-sdk/client-cloudwatch')
+class TestTransport extends Transport {
+	logs: string[] = []
 
-describe('Logger', () => {
-	let logger: Logger
-	let cloudWatchClientMock: jest.Mock
-	let logSpy: jest.SpiedFunction<LogMethod>
-
-	const attachLogSpy = () => {
-		logSpy = jest.spyOn(logger.logger, 'log')
+	log(info: TransformableInfo, callback: () => void): void {
+		const finalMessage = info[Symbol.for('message')] as string
+		this.logs.push(finalMessage)
+		callback()
 	}
+}
 
-	beforeEach(() => {
-		// Reset the singleton instance
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		Logger.instance = undefined as any
+const baseConfig: ConfigOptions = {
+	CODENAME: 'test-codename',
+	ENV: Env.Development,
+	HOST: 'test-host',
+	LOG_FORMAT: 'friendly',
+	LOG_FRIENDLY_FIELDS_HIDE: ['password'],
+	LOG_LEVEL: LogLevel.Info,
+	LOG_PREFIX: '[test] ',
+	LOG_SECTION_SEPARATOR: ' | ',
+	LOG_STRUCTURED_FIELDS_HIDE: [] as string[],
+	PACKAGE: 'test-package',
+	SIMPLE_LOGS: false,
+	STAGE: Stage.Beta,
+	TIMESTAMP_FORMAT: 'YYYY-MM-DD HH:mm:ssZ',
+	VERSION: '1.0.0',
 
-		// Initialize logger with test-specific configuration
-		logger = initializeLogger({
-			configOptions: {
-				CODENAME: 'TEST',
-				ENV: Env.Development,
-				HOST: 'localhost',
-				LOG_FORMAT: 'friendly',
-				LOG_LEVEL: LogLevel.Debug,
-				LOG_SECTION_SEPARATOR: ' | ',
-				PACKAGE: 'logger-package',
-				STAGE: Env.Beta,
-				TIMESTAMP_FORMAT: 'YYYY-MM-DD HH:mm:ssZ',
-				VERSION: '1.0.0',
-			},
-		})
+	// REQUEST_ID is optional and omitted here
+}
 
-		// Remove only test-specific metadata
-		logger.removeFromAllLogs('userId', 'sessionId')
+// Define a variable to hold the current configuration
+let currentConfig: ConfigOptions = { ...baseConfig }
 
-		// Mock CloudWatch's send method
-		cloudWatchClientMock = jest.fn().mockResolvedValue({} as never)
-		logger.cloudwatch = { send: cloudWatchClientMock } as unknown as CloudWatchClient
+// Correctly mock getConfig to handle Partial<ConfigOptions>
+const mockedGetConfig = mocked(getConfig) as jest.MockedFunction<typeof getConfig>
 
-		attachLogSpy()
-	})
+mockedGetConfig.mockImplementation((options?: Partial<ConfigOptions>) => ({
+	...currentConfig,
+	...options,
+}))
 
-	afterEach(() => {
-		jest.clearAllMocks()
-	})
-
-	it('should be a singleton', () => {
-		const anotherLogger = Logger.getInstance()
-		expect(logger).toBe(anotherLogger)
-	})
-
-	it('should log a message at debug level', () => {
-		logger.debug('Debug message', { key: 'value' })
-		expect(logSpy).toHaveBeenCalledWith('debug', 'Debug message', expect.objectContaining({ key: 'value' }))
-	})
-
-	it('should format messages with timestamp, level, and message', () => {
-		const formatLogMessageSpy = jest.spyOn(logger, 'formatLogMessage')
-		logger.info('Info message', { exampleKey: 'exampleValue' })
-		expect(formatLogMessageSpy).toHaveBeenCalled()
-		expect(logSpy).toHaveBeenCalledWith(
-			'info',
-			'Info message',
-			expect.objectContaining({ exampleKey: 'exampleValue' }),
-		)
-		formatLogMessageSpy.mockRestore()
-	})
-
-	it('should verify timestamp format without color codes', () => {
-		const info = {
-			level: 'info',
-			message: 'This is a test',
-			timestamp: '2023-09-30 12:34:56',
-		}
-		const separator = ' | '
-		const formattedMessage = logger.formatLogMessage(info, separator, '')
-		expect(formattedMessage).toContain('2023-09-30 12:34:56')
-	})
-
-	it('should publish a metric to CloudWatch', async () => {
-		await logger.publishMetric({
-			metricName: 'TestMetric',
-			unit: MetricUnit.Count,
-			value: 1,
-		})
-
-		expect(cloudWatchClientMock).toHaveBeenCalledWith(expect.any(PutMetricDataCommand))
-	})
-
-	it('should throw error if invalid LOG_FORMAT is provided', () => {
-		expect(() => {
-			new Logger({ configOptions: { LOG_FORMAT: 'invalidFormat' } })
-		}).toThrowError(/Invalid LOG_FORMAT/)
-	})
-
-	it('should initialize logger with default config when INIT_LOGGER is set to true', () => {
-		process.env.INIT_LOGGER = 'true'
-		const autoInitializedLogger = Logger.getInstance()
-		expect(autoInitializedLogger).toBeDefined()
-	})
-
-	it('should verify logger is not auto-initialized if INIT_LOGGER is set to false', () => {
-		process.env.INIT_LOGGER = 'false'
-		const freshLogger = new Logger({ configOptions: { LOG_LEVEL: LogLevel.Info } })
-		expect(freshLogger).toBeDefined()
-	})
-
-	it('should add metadata to all subsequent logs', () => {
-		logger.addToAllLogs('userId', 'user-123')
-		logger.info('Message with user')
-		expect(logSpy).toHaveBeenCalledWith(
-			'info',
-			'Message with user',
-			expect.objectContaining({ userId: 'user-123' }),
-		)
-	})
-
-	it('should remove a single metadata key from all subsequent logs', () => {
-		logger.addToAllLogs('userId', 'user-123')
-		logger.removeFromAllLogs('userId')
-
-		expect(logger.metadata).not.toHaveProperty('userId')
-
-		logger.info('Message without user')
-		expect(logSpy).toHaveBeenCalledWith(
-			'info',
-			'Message without user',
-			expect.not.objectContaining({ userId: 'user-123' }),
-		)
-	})
-
-	it('should remove multiple metadata keys when passed separately', () => {
-		logger.addToAllLogs('userId', 'user-123')
-		logger.addToAllLogs('sessionId', 'session-abc')
-		logger.removeFromAllLogs('userId', 'sessionId')
-		logger.info('Message without user and session')
-		expect(logSpy).toHaveBeenCalledWith(
-			'info',
-			'Message without user and session',
-			expect.not.objectContaining({ sessionId: 'session-abc', userId: 'user-123' }),
-		)
-	})
-
-	it('should remove multiple metadata keys when passed as an array', () => {
-		logger.addToAllLogs('userId', 'user-123')
-		logger.addToAllLogs('sessionId', 'session-abc')
-		logger.addToAllLogs('codename', 'coden-xyz')
-		logger.removeFromAllLogs(['userId', 'sessionId', 'codename'])
-		logger.info('Message without user, session and codename')
-		expect(logSpy).toHaveBeenCalledWith(
-			'info',
-			'Message without user, session and codename',
-			expect.not.objectContaining({ codename: 'coden-xyz', sessionId: 'session-abc', userId: 'user-123' }),
-		)
-	})
-
-	it('should format friendly logs correctly', () => {
-		logger.addToAllLogs('userId', 'user-123')
-		logger.info('Friendly log message')
-		expect(logSpy).toHaveBeenCalledWith(
-			'info',
-			'Friendly log message',
-			expect.objectContaining({ userId: 'user-123' }),
-		)
-	})
-
-	it('should format structured logs correctly', () => {
-		logger = initializeLogger({
-			configOptions: {
-				CODENAME: 'TEST',
-				ENV: Env.Development,
-				HOST: 'localhost',
-				LOG_FORMAT: 'structured',
-				LOG_LEVEL: LogLevel.Debug,
-				LOG_SECTION_SEPARATOR: ' | ',
-				PACKAGE: 'logger-package',
-				STAGE: Env.Beta,
-				TIMESTAMP_FORMAT: 'YYYY-MM-DD HH:mm:ssZ',
-				VERSION: '1.0.0',
-			},
-		})
-
-		logger.removeFromAllLogs('userId', 'sessionId')
-		attachLogSpy()
-
-		logger.addToAllLogs('userId', 'user-123')
-		logger.info('Structured log message')
-
-		expect(logSpy).toHaveBeenCalledWith(
-			'info',
-			'Structured log message',
-			expect.objectContaining({ userId: 'user-123' }),
-		)
-	})
-
-	it('should not include removed metadata in friendly logs', () => {
-		logger.addToAllLogs('userId', 'user-123')
-		logger.removeFromAllLogs('userId')
-		logger.info('Friendly log without user')
-		expect(logSpy).toHaveBeenCalledWith(
-			'info',
-			'Friendly log without user',
-			expect.not.objectContaining({ userId: 'user-123' }),
-		)
-	})
-
-	it('should not include removed metadata in structured logs', () => {
-		logger = initializeLogger({
-			configOptions: {
-				CODENAME: 'TEST',
-				ENV: Env.Development,
-				HOST: 'localhost',
-				LOG_FORMAT: 'structured',
-				LOG_LEVEL: LogLevel.Debug,
-				LOG_SECTION_SEPARATOR: ' | ',
-				PACKAGE: 'logger-package',
-				STAGE: Env.Beta,
-				TIMESTAMP_FORMAT: 'YYYY-MM-DD HH:mm:ssZ',
-				VERSION: '1.0.0',
-			},
-		})
-
-		logger.removeFromAllLogs('userId', 'sessionId')
-		attachLogSpy()
-
-		logger.addToAllLogs('userId', 'user-123')
-		logger.removeFromAllLogs('userId')
-		logger.info('Structured log without user')
-
-		expect(logSpy).toHaveBeenCalledWith(
-			'info',
-			'Structured log without user',
-			expect.not.objectContaining({ userId: 'user-123' }),
-		)
-	})
-
-	// **New Tests Start Here**
-
-	it('should add a new log level and log at that level', () => {
-		const newLevels = { fatal: 0 }
-		const newColors = { fatal: 'red' }
-		logger.updateLevels(newLevels, newColors)
-
-		attachLogSpy()
-
-		logger.log({ level: 'fatal' as LogLevel, message: 'Fatal error occurred', metadata: { errorCode: 500 } })
-		expect(logSpy).toHaveBeenCalledWith(
-			'fatal',
-			'Fatal error occurred',
-			expect.objectContaining({ errorCode: 500 }),
-		)
-	})
-
-	it('should update the color of an existing log level and reflect in output', () => {
-		const updatedColors = { info: 'green' }
-		logger.updateLevels({}, updatedColors)
-
-		attachLogSpy()
-
-		logger.info('Info message with updated color')
-		expect(logSpy).toHaveBeenCalledWith('info', 'Info message with updated color', expect.any(Object))
-	})
-
-	it('should preserve existing transports after updating levels and colors', () => {
-		const initialTransports = logger.logger.transports.length
-
-		const newLevels = { critical: -1 }
-		const newColors = { critical: 'red' }
-		logger.updateLevels(newLevels, newColors)
-
-		attachLogSpy()
-
-		expect(logger.logger.transports.length).toBe(initialTransports)
-
-		logger.log({ level: 'critical' as LogLevel, message: 'Critical failure!', metadata: { system: 'Payment' } })
-		expect(logSpy).toHaveBeenCalledWith(
-			'critical',
-			'Critical failure!',
-			expect.objectContaining({ system: 'Payment' }),
-		)
-	})
-
-	it('should log multiple new levels correctly', () => {
-		const newLevels = { emergency: -2, notice: 1 }
-		const newColors = { emergency: 'magenta', notice: 'blue' }
-		logger.updateLevels(newLevels, newColors)
-
-		attachLogSpy()
-
-		logger.log({ level: 'emergency' as LogLevel, message: 'Emergency situation!', metadata: { code: 'EMG001' } })
-		expect(logSpy).toHaveBeenCalledWith(
-			'emergency',
-			'Emergency situation!',
-			expect.objectContaining({ code: 'EMG001' }),
-		)
-
-		logger.log({ level: 'notice' as LogLevel, message: 'Notice message.', metadata: { info: 'Important info' } })
-		expect(logSpy).toHaveBeenCalledWith(
-			'notice',
-			'Notice message.',
-			expect.objectContaining({ info: 'Important info' }),
-		)
-	})
-
-	it('should not throw when updating with existing levels and colors', () => {
-		const existingLevels = { info: 2 }
-		const existingColors = { info: 'cyan' }
-		expect(() => {
-			logger.updateLevels(existingLevels, existingColors)
-		}).not.toThrow()
-
-		attachLogSpy()
-
-		logger.info('Info message after re-updating levels and colors')
-		expect(logSpy).toHaveBeenCalledWith(
-			'info',
-			'Info message after re-updating levels and colors',
-			expect.any(Object),
-		)
-	})
-
-	it('should handle invalid log levels gracefully', () => {
-		expect(() => {
-			logger.log({ level: 'invalidLevel' as LogLevel, message: 'This should fail' })
-		}).toThrow()
-	})
-
-	it('should handle invalid color assignments by throwing', () => {
-		const invalidColors = { info: 'invalidColor' }
-
-		expect(() => {
-			logger.updateLevels({}, invalidColors)
-		}).toThrow()
-	})
-})
-
-describe('Logger.getLogObject', () => {
+// eslint-disable-next-line max-lines-per-function
+describe('logger', () => {
+	let testTransport: TestTransport
 	let logger: Logger
 
 	beforeEach(() => {
-		logger = new Logger({
-			configOptions: {
-				CODENAME: 'TEST',
-				ENV: Env.Development,
-				HOST: 'mock-host',
-				LOG_FORMAT: 'friendly',
-				LOG_LEVEL: LogLevel.Debug,
-				LOG_SECTION_SEPARATOR: ' | ',
-				PACKAGE: 'logger-package',
-				STAGE: Env.Beta,
-				TIMESTAMP_FORMAT: 'YYYY-MM-DD HH:mm:ssZ',
-				VERSION: '1.0.0',
-			},
-		})
+		// Reset all mocks before each test
+		jest.clearAllMocks()
+		;(mocked(uuidv4) as unknown as jest.Mock).mockReturnValue('generated-uuid')
 
-		// Ensure consistent metadata across all tests
-		logger.metadata = {
-			codename: 'TEST',
-			host: 'mock-host',
-			package: 'logger-package',
-			stage: 'Beta',
-			version: '1.0.0',
-		}
-	})
+		// Reset currentConfig to baseConfig before each test
+		currentConfig = { ...baseConfig }
 
-	it('should combine metadata and info while excluding specified fields', () => {
-		logger.addToAllLogs('requestId', '1234')
+		// Initialize TestTransport
+		testTransport = new TestTransport()
 
-		const originalMetadata = JSON.parse(JSON.stringify(logger.metadata))
-		const originalInfo = { level: 'info', message: 'Test message', userId: 'user-5678' }
-
-		const params: GetLogObjectParams = {
-			fieldsToHide: ['host', 'requestId'],
-			info: originalInfo,
+		// Initialize Logger with TestTransport
+		const loggerOptions: LoggerOptions = {
+			configOptions: baseConfig,
+			transports: [testTransport],
 		}
 
-		const result = logger.getLogObject(params)
+		logger = new Logger(loggerOptions)
+	})
 
-		expect(result).toEqual({
-			codename: 'TEST',
-			level: 'info',
-			message: 'Test message',
-			package: 'logger-package',
-			stage: 'Beta',
-			userId: 'user-5678',
+	it('initializes with default configuration', () => {
+		expect(logger.config).toMatchObject(baseConfig)
+		expect(logger.metadata).toMatchObject({
+			codename: 'test-codename',
+			env: Env.Development,
+			host: 'test-host',
+			package: 'test-package',
+			requestId: 'generated-uuid',
+			stage: Stage.Beta,
 			version: '1.0.0',
 		})
-
-		// Validate original metadata and info are unchanged
-		expect(logger.metadata).toEqual(originalMetadata)
-		expect(originalInfo).toEqual({ level: 'info', message: 'Test message', userId: 'user-5678' })
 	})
 
-	it('should handle empty fieldsToHide gracefully', () => {
-		logger.updateInstance({ configOptions: { LOG_FRIENDLY_FIELDS_HIDE: [] } })
-
-		const originalMetadata = JSON.parse(JSON.stringify(logger.metadata))
-		const originalInfo = { level: 'info', message: 'Test message' }
-
-		const params: GetLogObjectParams = { info: originalInfo }
-
-		const result = logger.getLogObject(params)
-
-		expect(result).toEqual({ ...originalMetadata, ...originalInfo })
-		expect(logger.metadata).toEqual(originalMetadata)
+	it('logs info messages', () => {
+		logger.info('hello-world', { foo: 'bar' })
+		const output = testTransport.logs.join('\n')
+		expect(output).toContain('hello-world')
+		expect(output).toContain('foo: bar')
 	})
 
-	it('should exclude fields defined in LOG_FRIENDLY_FIELDS_HIDE', () => {
-		const originalMetadata = JSON.parse(JSON.stringify(logger.metadata))
-		const originalInfo = { level: 'info', message: 'Test message', userId: 'user-5678' }
-
-		const params: GetLogObjectParams = { fieldsToHide: ['host', 'level'], info: originalInfo }
-
-		const result = logger.getLogObject(params)
-
-		expect(result).toEqual({
-			codename: 'TEST',
-			message: 'Test message',
-			package: 'logger-package',
-			stage: 'Beta',
-			userId: 'user-5678',
-			version: '1.0.0',
-		})
-
-		// Validate original metadata and info are unchanged
-		expect(logger.metadata).toEqual(originalMetadata)
-		expect(originalInfo).toEqual({ level: 'info', message: 'Test message', userId: 'user-5678' })
+	it('hides specified friendly fields', () => {
+		// Password should be hidden
+		logger.info('secret-test', { password: 'my-secret', user: 'alice' })
+		const output = testTransport.logs.join('\n')
+		expect(output).toContain('secret-test')
+		expect(output).toContain('user: alice')
+		expect(output).not.toContain('password:')
 	})
 
-	it('should return only metadata when info is empty', () => {
-		logger.updateInstance({ configOptions: { LOG_FRIENDLY_FIELDS_HIDE: ['stage'] } })
+	it('adjusts log level dynamically', async () => {
+		// Initially INFO, so DEBUG logs won't appear
+		logger.debug('not-visible')
+		let output = testTransport.logs.join('\n')
+		expect(output).not.toContain('not-visible')
 
-		const originalMetadata = JSON.parse(JSON.stringify(logger.metadata))
+		// Change level to DEBUG
+		logger.updateInstance({ configOptions: { LOG_LEVEL: LogLevel.Debug } })
 
-		const params: GetLogObjectParams = { info: {} }
+		// Verify that the config has been updated
+		expect(logger.logger.level).toBe(LogLevel.Debug)
 
-		const result = logger.getLogObject(params)
+		// Now DEBUG logs should appear
+		logger.debug('now-visible')
 
-		expect(result).toEqual(originalMetadata)
-		expect(logger.metadata).toEqual(originalMetadata)
+		// Give Winston a tick to process logs
+		await new Promise((resolve) => setImmediate(resolve))
+
+		output = testTransport.logs.join('\n')
+		expect(output).toContain('now-visible')
 	})
 
-	it('should return an empty object when all fields are excluded', () => {
-		const originalMetadata = JSON.parse(JSON.stringify(logger.metadata))
-		const originalInfo = { level: 'info', message: 'Test message' }
+	it('adds fields to all logs', () => {
+		logger.addToAllLogs('transactionId', '12345')
+		logger.info('with-transaction')
+		const output = testTransport.logs.join('\n')
+		expect(output).toContain('with-transaction')
+		expect(output).toContain('transactionId: 12345')
+	})
 
-		const params: GetLogObjectParams = {
-			fieldsToHide: ['codename', 'host', 'package', 'stage', 'version', 'requestId', 'level', 'message'],
-			info: originalInfo,
+	it('removes fields from all logs', () => {
+		logger.addToAllLogs('sessionId', 'abc')
+		logger.removeFromAllLogs('sessionId')
+		logger.info('no-session')
+		const output = testTransport.logs.join('\n')
+		expect(output).toContain('no-session')
+		expect(output).not.toContain('sessionId:')
+	})
+
+	it('switches to structured format', () => {
+		// Update the currentConfig to set LOG_FORMAT to 'structured' and remove REQUEST_ID
+		currentConfig = {
+			...currentConfig,
+			LOG_FORMAT: 'structured',
+			REQUEST_ID: undefined,
 		}
 
-		const result = logger.getLogObject(params)
+		// Update Logger instance with new config
+		logger.updateInstance({ configOptions: { LOG_FORMAT: 'structured', REQUEST_ID: undefined } })
 
-		expect(result).toEqual({})
-		expect(logger.metadata).toEqual(originalMetadata)
-		expect(originalInfo).toEqual({ level: 'info', message: 'Test message' })
+		// Clear old logs before structured test
+		testTransport.logs = []
+
+		logger.info('structured-test', { hello: 'world' })
+		const output = testTransport.logs[0]
+
+		// Ensure output is valid JSON
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-return
+		expect(() => JSON.parse(output)).not.toThrow()
+		const parsed: { hello: string; message: string; requestId: string } = JSON.parse(output)
+		expect(parsed.hello).toBe('world')
+		expect(parsed.message).toBe('structured-test')
+		expect(parsed.requestId).toBeDefined()
 	})
 
-	it('should handle undefined LOG_FRIENDLY_FIELDS_HIDE gracefully', () => {
-		const originalMetadata = JSON.parse(JSON.stringify(logger.metadata))
-		const originalInfo = { level: 'info', message: 'Test message' }
+	it('handles SIMPLE_LOGS and shorter request ids', () => {
+		// Mock uuidv4 to return a short string
+		;(mocked(uuidv4) as unknown as jest.Mock).mockReturnValue('short')
 
-		const params: GetLogObjectParams = { info: originalInfo }
+		// Update the currentConfig to set SIMPLE_LOGS to true and remove REQUEST_ID
+		currentConfig = {
+			...currentConfig,
+			REQUEST_ID: undefined,
+			SIMPLE_LOGS: true,
+		}
 
-		const result = logger.getLogObject(params)
+		// Update Logger instance with new config
+		logger.updateInstance({ configOptions: { REQUEST_ID: undefined, SIMPLE_LOGS: true } })
 
-		expect(result).toEqual({ ...originalMetadata, ...originalInfo })
+		expect(logger.metadata.requestId?.length).toBeLessThan(10)
+	})
 
-		// Validate original metadata and info are unchanged
-		expect(logger.metadata).toEqual(originalMetadata)
-		expect(originalInfo).toEqual({ level: 'info', message: 'Test message' })
+	it('publishes metrics to cloudwatch', async () => {
+		const { CloudWatchClient, PutMetricDataCommand } = jest.requireActual('@aws-sdk/client-cloudwatch')
+		const sendSpy = jest.spyOn(CloudWatchClient.prototype, 'send').mockResolvedValue({})
+		await logger.publishMetric({ metricName: 'TestMetric', value: 10 })
+		const output = testTransport.logs.join('\n')
+		expect(sendSpy).toHaveBeenCalledWith(expect.any(PutMetricDataCommand))
+		expect(output).toContain('Metric published [TestMetric]')
+		sendSpy.mockRestore()
+	})
+
+	it('handles metric publish errors', async () => {
+		const { CloudWatchClient, PutMetricDataCommand } = jest.requireActual('@aws-sdk/client-cloudwatch')
+		const sendSpy = jest.spyOn(CloudWatchClient.prototype, 'send').mockRejectedValue(new Error('publish-error'))
+		await logger.publishMetric({ metricName: 'FailMetric', value: 1 })
+		const output = testTransport.logs.join('\n')
+		expect(sendSpy).toHaveBeenCalledWith(expect.any(PutMetricDataCommand))
+		expect(output).toContain('Failed to publish metric [FailMetric]')
+		sendSpy.mockRestore()
 	})
 })

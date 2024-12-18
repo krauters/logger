@@ -1,3 +1,4 @@
+import type { Env } from '@krauters/structures'
 import type { Context as LambdaContext } from 'aws-lambda'
 import type { Format } from 'logform'
 import type TransportStream from 'winston-transport'
@@ -49,4 +50,15 @@ export const empty = 'NOTSET'
 export interface GetLogObjectParams {
 	fieldsToHide?: string[]
 	info: Record<string, unknown>
+}
+
+export interface Metadata {
+	[key: string]: unknown
+	codename?: string
+	env?: Env
+	host?: string
+	package?: string
+	requestId?: string
+	stage?: Env
+	version?: string
 }

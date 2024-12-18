@@ -11,15 +11,12 @@ import { v4 as uuidv4 } from 'uuid'
 import { addColors, createLogger, format, transports, config as winstonConfig } from 'winston'
 
 import type { Config } from './config'
-import type { GetLogObjectParams, LoggerOptions, LogOptions, PublishMetricOptions } from './structures'
+import type { GetLogObjectParams, LoggerOptions, LogOptions, Metadata, PublishMetricOptions } from './structures'
 
 import { getConfig } from './config'
 import { empty, LogLevel } from './structures'
 
-type Metadata = Record<string, unknown>
-
 export class Logger {
-	public static instance: Logger
 	public cloudwatch: CloudWatchClient
 	public config: Config
 	public logger: WinstonLoggerInstance
@@ -47,16 +44,6 @@ export class Logger {
 		})
 
 		this.cloudwatch = new CloudWatchClient({})
-	}
-
-	public static getInstance(options?: LoggerOptions): Logger {
-		if (!Logger.instance) {
-			Logger.instance = new Logger(options)
-		} else if (options) {
-			Logger.instance.updateInstance(options)
-		}
-
-		return Logger.instance
 	}
 
 	public addToAllLogs(key: string, value: unknown): void {
@@ -99,7 +86,8 @@ export class Logger {
 	}
 
 	public getFriendlyFormat(): Format {
-		const separator: string = this.config.LOG_SECTION_SEPARATOR
+		// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+		const separator: string = this.config.LOG_SECTION_SEPARATOR!
 		const prefix: string = this.config.LOG_PREFIX ?? ''
 
 		return format.combine(
@@ -127,7 +115,7 @@ export class Logger {
 	}
 
 	public getRequestId(context?: LambdaContext): string {
-		if (this.config.REQUEST_ID) return this.config.REQUEST_ID
+		if (this.config?.REQUEST_ID) return this.config.REQUEST_ID
 		if (context?.awsRequestId) return context.awsRequestId
 		if (this.config.SIMPLE_LOGS) return uuidv4().split('-')[0]
 
@@ -210,7 +198,7 @@ export class Logger {
 			this.logger.format = this.getFormatter()
 
 			// Explicitly update log level
-			this.logger.level = this.config.LOG_LEVEL
+			this.logger.level = this.config.LOG_LEVEL as string
 		} else if (context) {
 			const newRequestId = this.getRequestId(context)
 			const userFields = { ...this.metadata }
@@ -269,7 +257,6 @@ export class Logger {
 			version: this.config.VERSION,
 		}
 
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
 		return Object.fromEntries(Object.entries(base).filter(([, value]) => value !== empty && value !== Env.Unknown))
 	}
 }
