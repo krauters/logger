@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { Env, Stage } from '@krauters/structures'
 
-import type { Config, ConfigOptions } from '../src/config'
+import type { Config } from '../src/config'
+import type { ConfigOptions } from '../src/structures'
 
 import { getConfig } from '../src/config'
 import { LogLevel } from '../src/structures'
@@ -64,10 +65,12 @@ describe('getConfig Simplified Tests', () => {
 			LOG_FRIENDLY_FIELDS_HIDE: ['admin'],
 			LOG_LEVEL: LogLevel.Error,
 			LOG_PREFIX: '[env-test] ',
+			LOG_PROCESSOR: undefined,
 			LOG_SECTION_SEPARATOR: ' || ',
 			LOG_STRUCTURED_FIELDS_HIDE: ['secret', 'apiKey'],
+			OBFUSCATION_ENABLED: true,
+			OBFUSCATION_PATTERNS: [],
 			PACKAGE: 'env-package',
-			PULL_FROM_ENVIRONMENT: undefined,
 			REQUEST_ID: undefined,
 			SIMPLE_LOGS: true,
 			STAGE: Stage.Beta,

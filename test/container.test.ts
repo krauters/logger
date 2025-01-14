@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { Env, Stage } from '@krauters/structures'
 
-import type { ConfigOptions } from '../src/config'
-import type { LoggerOptions } from '../src/structures'
+import type { ConfigOptions, LoggerOptions } from '../src/structures'
 
 import { container, getLogger } from '../src/container'
 import { Logger } from '../src/logger'
