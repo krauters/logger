@@ -11,7 +11,14 @@ import { v4 as uuidv4 } from 'uuid'
 import { addColors, createLogger, format, transports, config as winstonConfig } from 'winston'
 
 import type { Config } from './config'
-import type { GetLogObjectParams, LoggerOptions, LogOptions, Metadata, PublishMetricOptions } from './structures'
+import type {
+	GetLogObjectParams,
+	LoggerOptions,
+	LogOptions,
+	LogProcessor,
+	Metadata,
+	PublishMetricOptions,
+} from './structures'
 
 import { getConfig } from './config'
 import { empty, LogLevel } from './structures'
@@ -23,9 +30,10 @@ export class Logger {
 	public metadata: Metadata = {}
 	private colors: Record<string, string | string[]>
 	private levels: Record<string, number>
+	private readonly MASK: string = '****MASKED****'
 
 	public constructor(options: LoggerOptions = {}) {
-		const { configOptions, context, format: customFormat, transports: customTransports } = options
+		const { configOptions, context, format: customFormat, logProcessor, transports: customTransports } = options
 		this.config = getConfig(configOptions)
 
 		const requestId = this.getRequestId(context)
@@ -37,7 +45,7 @@ export class Logger {
 		addColors(this.colors)
 
 		this.logger = createLogger({
-			format: customFormat ?? this.getFormatter(),
+			format: customFormat ?? this.getFormatter(logProcessor),
 			level: this.config.LOG_LEVEL,
 			levels: this.levels,
 			transports: customTransports ?? [new transports.Console()],
@@ -71,10 +79,10 @@ export class Logger {
 		].join(separator)
 	}
 
-	public getFormatter(): Format {
+	public getFormatter(logProcessor?: LogProcessor): Format {
 		const formatters = {
-			friendly: this.getFriendlyFormat.bind(this),
-			structured: this.getStructuredFormat.bind(this),
+			friendly: this.getFriendlyFormat.bind(this, logProcessor),
+			structured: this.getStructuredFormat.bind(this, logProcessor),
 		}
 
 		const formatType = this.config.LOG_FORMAT as keyof typeof formatters
@@ -85,7 +93,7 @@ export class Logger {
 		return formatters[formatType]()
 	}
 
-	public getFriendlyFormat(): Format {
+	public getFriendlyFormat(logProcessor?: LogProcessor): Format {
 		// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 		const separator: string = this.config.LOG_SECTION_SEPARATOR!
 		const prefix: string = this.config.LOG_PREFIX ?? ''
@@ -93,13 +101,19 @@ export class Logger {
 		return format.combine(
 			format.colorize({ all: true }),
 			format.timestamp({ format: this.config.TIMESTAMP_FORMAT }),
-			format.printf((info) =>
-				this.formatLogMessage(
-					this.getLogObject({ fieldsToHide: this.config.LOG_FRIENDLY_FIELDS_HIDE, info }),
-					separator,
-					prefix,
-				),
-			),
+			format.printf((info) => {
+				let logObject = this.getLogObject({ fieldsToHide: this.config.LOG_FRIENDLY_FIELDS_HIDE, info })
+
+				if (this.config.OBFUSCATION_ENABLED && this.config.OBFUSCATION_PATTERNS) {
+					logObject = this.applyObfuscation(logObject)
+				}
+
+				if (logProcessor) {
+					logObject = logProcessor(logObject)
+				}
+
+				return this.formatLogMessage(logObject, separator, prefix)
+			}),
 		)
 	}
 
@@ -115,19 +129,29 @@ export class Logger {
 	}
 
 	public getRequestId(context?: LambdaContext): string {
-		if (this.config?.REQUEST_ID) return this.config.REQUEST_ID
+		if (this.config.REQUEST_ID) return this.config.REQUEST_ID
 		if (context?.awsRequestId) return context.awsRequestId
 		if (this.config.SIMPLE_LOGS) return uuidv4().split('-')[0]
 
 		return uuidv4()
 	}
 
-	public getStructuredFormat(): Format {
+	public getStructuredFormat(logProcessor?: LogProcessor): Format {
 		return format.combine(
 			format.timestamp({ format: this.config.TIMESTAMP_FORMAT }),
-			format.printf((info) =>
-				JSON.stringify(this.getLogObject({ fieldsToHide: this.config.LOG_STRUCTURED_FIELDS_HIDE, info })),
-			),
+			format.printf((info) => {
+				let logObject = this.getLogObject({ fieldsToHide: this.config.LOG_STRUCTURED_FIELDS_HIDE, info })
+
+				if (this.config.OBFUSCATION_ENABLED && this.config.OBFUSCATION_PATTERNS) {
+					logObject = this.applyObfuscation(logObject)
+				}
+
+				if (logProcessor) {
+					logObject = logProcessor(logObject)
+				}
+
+				return JSON.stringify(logObject)
+			}),
 		)
 	}
 
@@ -180,7 +204,7 @@ export class Logger {
 	}
 
 	public updateInstance(options: LoggerOptions): void {
-		const { configOptions, context, format: customFormat, transports: customTransports } = options
+		const { configOptions, context, format: customFormat, logProcessor, transports: customTransports } = options
 
 		if (configOptions) {
 			this.config = getConfig(configOptions)
@@ -195,13 +219,14 @@ export class Logger {
 
 			this.metadata = { ...this.getBaseMetadata(newRequestId), ...userFields }
 
-			this.logger.format = this.getFormatter()
+			this.logger.format = this.getFormatter(logProcessor)
 
 			// Explicitly update log level
 			this.logger.level = this.config.LOG_LEVEL as string
 		} else if (context) {
 			const newRequestId = this.getRequestId(context)
 			const userFields = { ...this.metadata }
+
 			for (const key of Object.keys(this.getBaseMetadata(newRequestId))) {
 				// eslint-disable-next-line @typescript-eslint/no-dynamic-delete
 				delete userFields[key]
@@ -209,7 +234,7 @@ export class Logger {
 
 			this.metadata = { ...this.getBaseMetadata(newRequestId), ...userFields }
 
-			this.logger.format = this.getFormatter()
+			this.logger.format = this.getFormatter(logProcessor)
 		}
 
 		if (customFormat) {
@@ -221,6 +246,10 @@ export class Logger {
 			for (const transport of customTransports) {
 				this.logger.add(transport)
 			}
+		}
+
+		if (options.logProcessor) {
+			this.logger.format = this.getFormatter(options.logProcessor)
 		}
 	}
 
@@ -244,6 +273,26 @@ export class Logger {
 
 	public warn(message: string, data?: Metadata): void {
 		this.log({ level: LogLevel.Warn, message, metadata: data })
+	}
+
+	/**
+	 * Applies obfuscation to the log object based on configured regex patterns.
+	 *
+	 * @param logObject The original log object.
+	 * @returns The obfuscated log object.
+	 */
+	private applyObfuscation(logObject: Record<string, unknown>): Record<string, unknown> {
+		const obfuscated = { ...logObject }
+
+		for (const key in obfuscated) {
+			if (typeof obfuscated[key] === 'string') {
+				for (const pattern of this.config.OBFUSCATION_PATTERNS ?? []) {
+					obfuscated[key] = (obfuscated[key] as string).replace(pattern, this.MASK)
+				}
+			}
+		}
+
+		return obfuscated
 	}
 
 	private getBaseMetadata(requestId: string): Metadata {
