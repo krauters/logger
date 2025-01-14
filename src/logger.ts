@@ -111,7 +111,9 @@ export class Logger {
 			delete combined[field]
 		}
 
-		return combined
+		const { message, ...rest } = combined
+
+		return message ? { message, ...rest } : rest
 	}
 
 	public getRequestId(context?: LambdaContext): string {
